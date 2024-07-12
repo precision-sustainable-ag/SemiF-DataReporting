@@ -1,6 +1,6 @@
 data/*.txt
 logs
-
+**.pdf
 # Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[cod]
