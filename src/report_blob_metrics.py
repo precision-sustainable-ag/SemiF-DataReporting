@@ -1,11 +1,8 @@
 import pandas as pd
 import logging
-from collections import Counter
 from fpdf import FPDF
 from omegaconf import DictConfig
-from utils.utils import read_yaml
 from pathlib import Path
-import os
 
 log = logging.getLogger(__name__)
 
@@ -20,12 +17,11 @@ class ReporterBlobMetrics:
         """
         self.report_dir = cfg.paths.report
         self.output_dir = cfg.paths.data_dir
+        log.info("Initialized ReporterBlobMetrics with configuration data.")
     # Function to extract batch names and file types
-    def extract_batches(self,lines):
+    def extract_batches(self, lines: list[str]) -> list[tuple[str, str]]:
         batches = []
         for line in lines:
-            # if line.startswith('INFO: ') and not line.startswith('INFO: azcopy:'):
-            #version check
             if line.startswith('INFO: azcopy:'):
                 continue
             
@@ -45,45 +41,53 @@ class ReporterBlobMetrics:
             
             batches.append((batch, file_type))
         return batches
-    def remove_invalid_batches(self,df, column_name):
+    
+    def remove_invalid_batches(self, df: pd.DataFrame, column_name: str) -> pd.DataFrame:
+        # Removes invalid batches from DataFrame.
         invalid_pattern = r'^[A-Z]{2}-\d{4}-\d{2}-\d{2}$'
+        remaing_rows = df[df[column_name].str.contains(invalid_pattern, regex=True)]
+        print(remaing_rows.Batch.unique())
         filtered_df = df[~df[column_name].str.contains(invalid_pattern, regex=True)]
+        log.info(f"Filtered out invalid batches. Remaining batches: {len(filtered_df)}.")
         return filtered_df
 
-    def extract_month(self,batch_name):
+    def extract_month(self, batch_name: str) -> str:
+        # Extracts the month from the batch name.
         parts = batch_name.split('_')
         month = parts[1][:7]
         return month
 
-    def extract_state(self,batch_name):
+    def extract_state(self, batch_name: str) -> str:
+        # Extracts the state from the batch name.
         state = batch_name.split('_')[0]
         return state
 
-    # Function to calculate image counts
-    def calculate_image_counts(self,df):
-        # pattern = '|'.join(["test_test2", "test_test" , "semi_supervised7", "Center"])
+    def calculate_image_counts(self, df: pd.DataFrame) -> pd.DataFrame:
+        # Calculates the image counts grouped by state, month, and batch.
         df = self.remove_invalid_batches(df, "Batch")
+        # To avoid setting values on a copy of a slice from a DataFrame.
+        df_copy = df.copy()
         # Apply the function to extract state and month
-        df['State'] = df['Batch'].apply(self.extract_state)
-        df['Month'] = df['Batch'].apply(self.extract_month)
+        df_copy['State'] = df['Batch'].apply(self.extract_state)
+        df_copy['Month'] = df['Batch'].apply(self.extract_month)
 
-        print(df)
-        # df['State'], df['Month'] = zip(*df['Batch'].apply(lambda x: (x.split('_')[0], x.split('_')[1][:7])))
-        image_counts = df[df['FileType'].isin(['jpg', 'png'])].groupby(['State', 'Month', 'Batch']).size().reset_index(name='ImageCount')
+        image_counts = df_copy[df_copy['FileType'].isin(['jpg', 'png'])].groupby(['State', 'Month', 'Batch']).size().reset_index(name='ImageCount')
+        log.info(f"Calculated image counts for {len(image_counts)} batches.")
         return image_counts
 
-    # Function to calculate average image counts
-    def calculate_average_image_counts(self,image_counts):
+    def calculate_average_image_counts(self, image_counts: pd.DataFrame) -> pd.DataFrame:
+        # Calculates the average image counts grouped by state and month.
         average_image_counts = image_counts.groupby(['State', 'Month'])['ImageCount'].mean().reset_index(name='AverageImageCount')
+        log.info(f"Calculated average image counts for {len(average_image_counts)} state-month groups.")
         return average_image_counts
 
-    # Function to combine data
-    def combine_data(self,image_counts, average_image_counts):
+    def combine_data(self, image_counts: pd.DataFrame, average_image_counts: pd.DataFrame) -> pd.DataFrame:
+        # Combines image counts and average image counts into a single DataFrame.
         result_df = pd.merge(image_counts, average_image_counts, on=['State', 'Month'])
         return result_df
 
-    # Function to generate PDF report
-    def generate_pdf_report(self,result_df, output_path):
+    def generate_pdf_report(self, result_df: pd.DataFrame, output_path: Path) -> None:
+        # Combines image counts and average image counts into a single DataFrame.
         pdf = FPDF()
         pdf.add_page()
         pdf.set_font("Arial", size=12)
@@ -94,14 +98,15 @@ class ReporterBlobMetrics:
             pdf.cell(200, 5, txt=f"Average Image Count: {row['AverageImageCount']:.2f}", ln=True)
             pdf.ln(10)
         pdf.output(output_path)
+        log.info(f"PDF report generated and saved to {output_path}.")
 
 def main(cfg: DictConfig) -> None:
     """Main function to execute the BlobMetricExporter."""
     log.info(f"Starting {cfg.task}")
     reporter = ReporterBlobMetrics(cfg)
-    path_config_data = read_yaml('./conf/paths/default.yaml')
+
     # Load the text file
-    file_path = Path(reporter.output_dir,'semifield-developed-images.txt')
+    file_path = Path(cfg.paths.data_dir,'semifield-developed-images.txt')
     with open(file_path, 'r') as file:
         lines = file.readlines()
     
@@ -109,6 +114,7 @@ def main(cfg: DictConfig) -> None:
     batches = reporter.extract_batches(lines)
     
     df = pd.DataFrame(batches, columns=['Batch', 'FileType'])
+    log.info(f"Created DataFrame with {len(df)} rows.")
 
     image_counts = reporter.calculate_image_counts(df)
     
