@@ -14,7 +14,6 @@ report: ${paths.root_dir}/reports/
 # path to pipeline key file
 pipeline_keys: ${paths.root_dir}/keys/authorized_keys.yaml
 
-# path to output directory, created dynamically by hydra
-# path generation pattern is specified in `configs/hydra/default.yaml`
-# use it to store all files generated during the run, like ckpts and metrics
-# output_dir: ${hydra:runtime.output_dir}
+# NCSU Storage lockers
+longterm_images: /mnt/research-projects/s/screberg/longterm_images
+GROW_DATA: /mnt/research-projects/s/screberg/GROW_DATA
