@@ -22,25 +22,35 @@ class ReporterBlobMetrics:
     def extract_batches(self, lines: list[str]) -> list[tuple[str, str]]:
         batches = []
         for line in lines:
+            # accounts for blank lines
+            if not line.strip():
+                continue
+            # in some versions of azcopy
             if line.startswith('INFO: azcopy:'):
                 continue
+            
+            parts = line.split('/')
             if line.startswith('INFO: '):
-                parts = line.split('/')
+                
                 batch = parts[0].replace('INFO: ', '').strip()
-                filename = parts[-1].split(";")[0].strip()
-                if '.' in filename:
-                    file_type = filename.split('.')[-1]
-                else:
-                    file_type = 'folder'
-                batches.append((batch, file_type))
+            else:
+                batch = parts[0]
+            filename = parts[-1].split(";")[0].strip()
+            if '.' in filename:
+                file_type = filename.split('.')[-1]
+            else:
+                file_type = 'folder'
+            batches.append((batch, file_type))
         log.info(f"Extracted {len(batches)} batches.")
         return batches
     
     def remove_invalid_batches(self, df: pd.DataFrame, column_name: str) -> pd.DataFrame:
         # Removes invalid batches from DataFrame.
-        invalid_pattern = r'^[A-Z]{2}-\d{4}-\d{2}-\d{2}$'
-        filtered_df = df[~df[column_name].str.contains(invalid_pattern, regex=True)]
-        log.info(f"Filtered out invalid batches. Remaining batches: {len(filtered_df)}.")
+        valid_pattern = r'^[A-Z]{2}_\d{4}-\d{2}-\d{2}$'
+        invalid_batches = df[~df[column_name].str.contains(valid_pattern, regex=True)][column_name].unique()        
+        filtered_df = df[df[column_name].str.contains(valid_pattern, regex=True)]
+        
+        log.info(f"Removed {len(invalid_batches)} unique batches due to invalid pattern.")
         return filtered_df
 
     def extract_month(self, batch_name: str) -> str:
