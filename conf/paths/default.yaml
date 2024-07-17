@@ -1,0 +1,20 @@
+# path to root directory
+# this relys on main.py to be run from the project root
+root_dir: ${hydra:runtime.cwd}
+
+# path to data directory
+data_dir: ${paths.root_dir}/data/
+
+# path to logging directory
+log_dir: ${paths.root_dir}/logs/
+
+# path to report directory
+report: ${paths.root_dir}/reports/
+
+# path to pipeline key file
+pipeline_keys: ${paths.root_dir}/keys/authorized_keys.yaml
+
+# path to output directory, created dynamically by hydra
+# path generation pattern is specified in `configs/hydra/default.yaml`
+# use it to store all files generated during the run, like ckpts and metrics
+# output_dir: ${hydra:runtime.output_dir}

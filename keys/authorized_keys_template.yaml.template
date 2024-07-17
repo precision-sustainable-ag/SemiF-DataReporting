@@ -1,0 +1,11 @@
+# DO NOT SHARE KEYS ON GITHUB
+# Use this template to add new keys
+blobs:
+  semifield-developed-images:
+    url: ""
+    sas_token: ""
+  
+  semifield-cutouts:
+    url: ""
+    sas_token: ""
+  

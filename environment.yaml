@@ -1,0 +1,24 @@
+# versinons need updating
+name: semifield-reports
+channels:
+  - conda-forge
+dependencies:
+  - python=3.10.14
+  - pip=24.0
+  - numpy=2.0.0
+  - pandas=2.2.2
+  - matplotlib=3.9.1
+  - seaborn=0.13.2
+  - scikit-learn=1.5.1
+  - hydra-core=1.3.2
+  - reportlab=4.2.2
+  - fpdf=1.7.2
+  - pip:
+      - omegaconf==2.3.0
+      - PyYAML==6.0.1
+      - pytest==8.2.2
+      - azure-storage-blob==12.20.0
+      - azure-core==1.30.2
+      - tqdm==4.66.4
+      - shyaml==0.6.2
+      - hydra_colorlog==1.2.0

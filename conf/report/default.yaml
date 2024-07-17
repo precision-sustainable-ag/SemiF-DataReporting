@@ -1,0 +1,7 @@
+format: "pdf"
+figures:
+enabled: true
+charts:
+enabled: true
+tables:
+enabled: true

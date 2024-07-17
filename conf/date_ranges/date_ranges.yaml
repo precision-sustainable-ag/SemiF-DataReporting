@@ -1,0 +1,60 @@
+date_ranges:
+  MD:
+    weeds 2022:
+      start: "2022-03-04"
+      end: "2022-09-17"
+    cover crops 2022/2023:
+      start: "2022-10-20"
+      end: "2023-04-25"
+    cash crops 2023:
+      start: "2023-05-12"
+      end: "2023-07-07"
+    weeds 2023:
+      start: "2023-07-17"
+      end: "2023-09-17"
+    cover crops 2023/2024:
+      start: "2023-09-18"
+      end: "2024-05-16"
+    weeds 2024:
+      start: "2024-07-08"
+      end: ""
+
+  NC:
+    weeds 2022:
+      start: "2022-03-04"
+      end: "2022-09-23"
+    cover crops 2022/2023:
+      start: "2022-10-11"
+      end: "2023-03-30"
+    cash crops 2023:
+      start: "2023-06-06"
+      end: "2023-07-25"
+    weeds 2023:
+      start: "2023-08-21"
+      end: "2023-10-10"
+    cover crops 2023/2024:
+      start: "2023-10-11"
+      end: "2024-03-14"
+    weeds 2024:
+      start: "2024-07-08"
+      end: ""
+
+  TX:
+    weeds 2022:
+      start: "2022-03-04"
+      end: "2022-10-24"
+    cover crops 2022/2023:
+      start: "2022-10-25"
+      end: "2023-04-04"
+    cash crops 2023:
+      start: "2023-05-08"
+      end: "2023-08-01"
+    weeds 2023:
+      start: "2023-08-04"
+      end: "2023-10-19"
+    cover crops 2023/2024:
+      start: "2023-10-20"
+      end: "2024-03-01"
+    weeds 2024:
+      start: "2024-03-26"
+      end: ""

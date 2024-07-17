@@ -1,0 +1,10 @@
+# Hydra defaults and settings. Ignore these (don't change)
+defaults:
+  - _self_
+  - date_ranges: date_ranges
+  - hydra: default
+  - paths: default
+
+report:
+task: ???
+
