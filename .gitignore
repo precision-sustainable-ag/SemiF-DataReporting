@@ -5,7 +5,7 @@ logs
 __pycache__/
 *.py[cod]
 *$py.class
-
+notebooks
 # C extensions
 *.so
 
