@@ -24,22 +24,16 @@ class ReporterBlobMetrics:
         for line in lines:
             if line.startswith('INFO: azcopy:'):
                 continue
-            
-            parts = line.split('/')
-            if 'INFO:' in parts[0]:
-                batch = parts[0].replace('INFO: ', '')
-            else:
-                batch = parts[0]
-            if "Center" in batch:
-                continue
-            
-            filename = parts[-1].split(";")[0]
-            if '.' in filename:
-                file_type = filename.split('.')[-1]
-            else:
-                file_type = 'folder'
-            
-            batches.append((batch, file_type))
+            if line.startswith('INFO: '):
+                parts = line.split('/')
+                batch = parts[0].replace('INFO: ', '').strip()
+                filename = parts[-1].split(";")[0].strip()
+                if '.' in filename:
+                    file_type = filename.split('.')[-1]
+                else:
+                    file_type = 'folder'
+                batches.append((batch, file_type))
+        log.info(f"Extracted {len(batches)} batches.")
         return batches
     
     def remove_invalid_batches(self, df: pd.DataFrame, column_name: str) -> pd.DataFrame:
