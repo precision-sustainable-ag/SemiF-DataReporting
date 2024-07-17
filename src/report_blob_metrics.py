@@ -39,8 +39,6 @@ class ReporterBlobMetrics:
     def remove_invalid_batches(self, df: pd.DataFrame, column_name: str) -> pd.DataFrame:
         # Removes invalid batches from DataFrame.
         invalid_pattern = r'^[A-Z]{2}-\d{4}-\d{2}-\d{2}$'
-        remaing_rows = df[df[column_name].str.contains(invalid_pattern, regex=True)]
-        print(remaing_rows.Batch.unique())
         filtered_df = df[~df[column_name].str.contains(invalid_pattern, regex=True)]
         log.info(f"Filtered out invalid batches. Remaining batches: {len(filtered_df)}.")
         return filtered_df
