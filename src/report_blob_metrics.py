@@ -36,12 +36,17 @@ class ReporterBlobMetrics:
                 batch = parts[0].replace('INFO: ', '').strip()
             else:
                 batch = parts[0]
-            filename = parts[-1].split(";")[0].strip()
-            if '.' in filename:
-                file_type = filename.split('.')[-1]
+            full_filename = parts[-1].split(";")[0].strip()
+            folder_name=parts[-2]
+            
+            if '.' in full_filename:
+                file_type = full_filename.split('.')[-1]
+                file_name=full_filename.split('.')[-2]
             else:
                 file_type = 'folder'
-            batches.append((batch, file_type))
+                file_name=full_filename
+
+            batches.append((batch, folder_name, file_name, file_type))
         log.info(f"Extracted {len(batches)} batches.")
         return batches
     
@@ -109,8 +114,7 @@ def main(cfg: DictConfig) -> None:
     
     # Main execution
     batches = reporter.extract_batches(lines)
-    
-    df = pd.DataFrame(batches, columns=['Batch', 'FileType'])
+    df = pd.DataFrame(batches, columns=['Batch', 'FolderName', 'FileName', 'FileType'])
     log.info(f"Created DataFrame with {len(df)} rows.")
 
     df_filtered = reporter.format_data(df)
@@ -118,6 +122,9 @@ def main(cfg: DictConfig) -> None:
     # Calculate image counts and averages
     image_counts = calculate_blob_metrics.calculate_image_counts(df_filtered)
     average_image_counts = calculate_blob_metrics.calculate_average_image_counts(image_counts)
+
+    #Compare file type lengths
+    # calculate_blob_metrics.compute_matching(df_filtered)
 
     result_df = reporter.combine_data(image_counts, average_image_counts)
     output_path = Path(reporter.report_dir,'semifield-developed-images_image_counts_and_averages_report.pdf')
