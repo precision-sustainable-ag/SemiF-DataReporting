@@ -79,8 +79,6 @@ class ReporterBlobMetrics:
         # Apply the function to extract state and month
         df_copy['State'] = df['Batch'].apply(self.extract_state)
         df_copy['Month'] = df['Batch'].apply(self.extract_month)
-
-        print(df_copy)
         return df_copy
 
     def combine_data(self, image_counts: pd.DataFrame, average_image_counts: pd.DataFrame) -> pd.DataFrame:
@@ -124,7 +122,7 @@ def main(cfg: DictConfig) -> None:
     average_image_counts = calculate_blob_metrics.calculate_average_image_counts(image_counts)
 
     #Compare file type lengths
-    # calculate_blob_metrics.compute_matching(df_filtered)
+    calculate_blob_metrics.compute_matching(df_filtered,cfg.matching_folders)
 
     result_df = reporter.combine_data(image_counts, average_image_counts)
     output_path = Path(reporter.report_dir,'semifield-developed-images_image_counts_and_averages_report.pdf')

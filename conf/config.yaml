@@ -7,4 +7,5 @@ defaults:
 
 report:
 task: ???
-
+#folders that will be matched in the data directory
+matching_folders: ['images','instance_masks','semantic_masks','metadata']
