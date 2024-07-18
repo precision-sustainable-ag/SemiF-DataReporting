@@ -3,6 +3,7 @@ import logging
 from fpdf import FPDF
 from omegaconf import DictConfig
 from pathlib import Path
+import calculate_blob_metrics
 
 log = logging.getLogger(__name__)
 
@@ -63,8 +64,9 @@ class ReporterBlobMetrics:
         # Extracts the state from the batch name.
         state = batch_name.split('_')[0]
         return state
-
-    def calculate_image_counts(self, df: pd.DataFrame) -> pd.DataFrame:
+    
+        # Function to format and filter data
+    def format_data(self, df: pd.DataFrame) -> pd.DataFrame:
         # Calculates the image counts grouped by state, month, and batch.
         df = self.remove_invalid_batches(df, "Batch")
         # To avoid setting values on a copy of a slice from a DataFrame.
@@ -73,15 +75,8 @@ class ReporterBlobMetrics:
         df_copy['State'] = df['Batch'].apply(self.extract_state)
         df_copy['Month'] = df['Batch'].apply(self.extract_month)
 
-        image_counts = df_copy[df_copy['FileType'].isin(['jpg', 'png'])].groupby(['State', 'Month', 'Batch']).size().reset_index(name='ImageCount')
-        log.info(f"Calculated image counts for {len(image_counts)} batches.")
-        return image_counts
-
-    def calculate_average_image_counts(self, image_counts: pd.DataFrame) -> pd.DataFrame:
-        # Calculates the average image counts grouped by state and month.
-        average_image_counts = image_counts.groupby(['State', 'Month'])['ImageCount'].mean().reset_index(name='AverageImageCount')
-        log.info(f"Calculated average image counts for {len(average_image_counts)} state-month groups.")
-        return average_image_counts
+        print(df_copy)
+        return df_copy
 
     def combine_data(self, image_counts: pd.DataFrame, average_image_counts: pd.DataFrame) -> pd.DataFrame:
         # Combines image counts and average image counts into a single DataFrame.
@@ -118,9 +113,12 @@ def main(cfg: DictConfig) -> None:
     df = pd.DataFrame(batches, columns=['Batch', 'FileType'])
     log.info(f"Created DataFrame with {len(df)} rows.")
 
-    image_counts = reporter.calculate_image_counts(df)
-    
-    average_image_counts = reporter.calculate_average_image_counts(image_counts)
+    df_filtered = reporter.format_data(df)
+
+    # Calculate image counts and averages
+    image_counts = calculate_blob_metrics.calculate_image_counts(df_filtered)
+    average_image_counts = calculate_blob_metrics.calculate_average_image_counts(image_counts)
+
     result_df = reporter.combine_data(image_counts, average_image_counts)
     output_path = Path(reporter.report_dir,'semifield-developed-images_image_counts_and_averages_report.pdf')
     reporter.generate_pdf_report(result_df, output_path)
