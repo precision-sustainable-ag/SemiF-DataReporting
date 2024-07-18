@@ -17,3 +17,5 @@ pipeline_keys: ${paths.root_dir}/keys/authorized_keys.yaml
 # NCSU Storage lockers
 longterm_images: /mnt/research-projects/s/screberg/longterm_images
 GROW_DATA: /mnt/research-projects/s/screberg/GROW_DATA
+
+species_info: /home/mkutuga/SemiF-DataReporting/data/semifield-utils/species_information/species_info.json
