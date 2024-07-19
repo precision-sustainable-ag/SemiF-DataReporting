@@ -7,7 +7,7 @@ import re
 from typing import List, Dict, Optional, Type, Tuple
 from datetime import datetime
 from tqdm import tqdm
-from collections import Counter, defaultdict
+from collections import Counter
 from utils.utils import TqdmLoggingHandler
 
 # Set up logging to integrate with tqdm
@@ -95,10 +95,12 @@ class BaseBatchChecker:
             format_type = self.determine_format_type(self.batch_path / "metadata", "annotations")
             if format_type != "unknown":
                 class_counter, primary_counter = self.get_annotation_data(self.batch_path / "metadata", format_type)
+                image_count = self.get_image_count()
 
                 batch_info = {
                     "batch": self.batch_path.name,
                     "FormatType": format_type,
+                    "ImageCount": image_count,
                 }
 
                 # Add class counters to batch_info
@@ -115,6 +117,13 @@ class BaseBatchChecker:
         else:
             log.warning(f"Ignoring invalid batch: {self.batch_path.name}")
         return None
+    
+    def get_image_count(self) -> int:
+        """
+        Get the count of .jpg images in the images subfolder.
+        """
+        images_path = self.batch_path / "images"
+        return len(list(images_path.glob('*.jpg'))) if images_path.exists() else 0
 
 class BatchReport:
     def __init__(self, paths: List[Path], checker_class: Type[BaseBatchChecker], species_info: Dict[int, str]):
@@ -130,7 +139,7 @@ class BatchReport:
         for path in self.paths:
             base_path = Path(path)
             log.info(f"Checking path: {base_path}")
-            batches = [x for x in base_path.glob('*')][:10]
+            batches = [x for x in base_path.glob('*')]
             for batch in tqdm(batches, desc=f"Processing batches in {base_path}", total=len(batches), leave=True, dynamic_ncols=True):
                 if batch.is_dir():
                     checker = self.checker_class(batch, self.species_info)
