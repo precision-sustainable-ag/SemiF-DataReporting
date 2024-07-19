@@ -167,7 +167,6 @@ class BatchReport:
         csv_filename = f"{filename_prefix}_{timestamp}.csv"
         df.to_csv(csv_save_dir / csv_filename, index=False)
         log.info(f"Report saved to {csv_filename}")
-        print(df)
 
 def load_species_info(species_info_path: Path) -> Dict[int, str]:
     """
