@@ -4,6 +4,7 @@ from fpdf import FPDF
 from omegaconf import DictConfig
 from pathlib import Path
 import calculate_blob_metrics
+import csv
 
 log = logging.getLogger(__name__)
 
@@ -122,7 +123,23 @@ def main(cfg: DictConfig) -> None:
     average_image_counts = calculate_blob_metrics.calculate_average_image_counts(image_counts)
 
     #Compare file type lengths
-    calculate_blob_metrics.compute_matching(df_filtered,cfg.matching_folders)
+    mismatch_statistics=calculate_blob_metrics.compute_matching(df_filtered,cfg.matching_folders)
+    #writing the mismatch statistics to a csv file for now
+    
+
+    # with open('mismatch_statistics_record.csv', 'w') as csvfile:
+    #     writer = csv.DictWriter(csvfile, fieldnames=list(mismatch_statistics.keys()))
+    #     writer.writeheader()
+    #     writer.writerow(mismatch_statistics)
+
+    fields=['Batch','images','metadata','meta_mask','isMatching','Missing']
+    with open('mismatch_statistics_record.csv', 'w') as csvfile:
+        w = csv.DictWriter( csvfile, fields )
+        for key,val in sorted(mismatch_statistics.items()):
+            # import pdb; pdb.set_trace()
+            row = {'Batch': key}
+            row.update(val)
+            w.writerow(row)
 
     result_df = reporter.combine_data(image_counts, average_image_counts)
     output_path = Path(reporter.report_dir,'semifield-developed-images_image_counts_and_averages_report.pdf')

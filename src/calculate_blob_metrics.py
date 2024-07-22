@@ -22,24 +22,44 @@ def calculate_average_image_counts(image_counts: pd.DataFrame) -> pd.DataFrame:
     return average_image_counts
 
 #Function to compare file type lenghts
-def compute_matching( df: pd.DataFrame, matching_folders: str) -> None:
+def compute_matching( df: pd.DataFrame, matching_folders: str) -> dict:
     pd.set_option('display.max_colwidth', None)
     print(df.head(10))
-
+     
     grouped_df=df[df['FolderName'].isin(matching_folders) & df['FileType'].isin(['json','jpg','png'])]
     grouped_df = grouped_df.groupby(['Batch','FileName'])
-
+    log.info(f"Extracted DataFrame with {len(grouped_df)} rows for matching.")
     # Check for mismatch files
+    batch_stat={x: {'images':0,'metadata':0,'meta_mask':0,'isMatching':True,'Missing':[]} for x in df.Batch.unique()}
     for key, item in grouped_df:
-        #uncomment for just one batch
-        # if key[0] == 'MD_2022-06-27':
-        if len(item) != 4:
-            log.info(f"Found a batch that does not have all reuqired files.")
-            print(grouped_df.get_group(key), "\n\n")
+        if len(item) < 4:
+            # assert len(item) == 0, f"{key} does not have any files."
+            if len(item) == 0:
+                log.info(f"{key} does not have any files.")
+
+            log.info(f"{key} does not contain all reuqired files.")
+            # Define the file types we are interested in
+            file_types = {
+                        'jpg': 'images',
+                        'json': 'metadata',
+                        'png': 'meta_mask'
+                                        }
+
+            for expected_file in file_types.keys():
+                #update the file count
+                if expected_file in list(item['FileType']):
+                    batch_stat[key[0]][file_types[expected_file]] += 1
+                else:
+                    #create a list for missing files ignore unprocessed folders
+                    batch_stat[key[0]]['Missing'].append(f"{item['FileName'].iloc[0]}.{expected_file}")
+            batch_stat[key[0]]['isMatching'] = False
+            
         else:
-            continue
-    # log.info(f"Found a batch that does not have all reuqired files.")
-    return None
+            batch_stat[key[0]]['images'] += 1
+            batch_stat[key[0]]['metadata'] += 1
+            batch_stat[key[0]]['meta_mask'] += 1
+    
+    return batch_stat
 
 
 
