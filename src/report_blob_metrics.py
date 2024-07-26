@@ -3,7 +3,6 @@ import logging
 from fpdf import FPDF
 from omegaconf import DictConfig
 from pathlib import Path
-import calculate_blob_metrics
 import csv
 
 log = logging.getLogger(__name__)
