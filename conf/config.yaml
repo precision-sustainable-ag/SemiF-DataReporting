@@ -7,5 +7,5 @@ defaults:
 
 report:
 task: ???
-#folders that will be matched in the data directory
-matching_folders: ['images','instance_masks','semantic_masks','metadata']
+#folders and their corresponding ile types that will be matched in the data directory
+matching_folders: {'images':'jpg','instance_masks':'png','semantic_masks':'png','metadata':'json'}

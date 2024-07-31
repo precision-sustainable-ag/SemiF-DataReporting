@@ -47,7 +47,9 @@ With the environment set up and activated, you can run the scripts provided in t
 
 ### `export_blob_metrics.py`
 
-This script exports blob metrics using Azure AzCopy. It reads configuration from a YAML file and lists blobs, saving the output to text files.
+1. ExporterBlobMetrics: Exports blob metrics by running AzCopy commands and saving the output to text files.
+
+2. CalculatorBlobMetrics: Calculates and analyzes blob metrics from the exported text files, including extracting batch details, filtering data, and computing image counts.
 
 ### Usage
 
@@ -59,5 +61,22 @@ This script exports blob metrics using Azure AzCopy. It reads configuration from
 
 ### Output
 
-The script saves the list of blobs in text files. The text files are saved in the directory specified by `cfg.paths.data_dir` in the configuration file, with the nameing format `<blob_container_name>.txt`.
+1. Text Files: The ExporterBlobMetrics class saves blob lists as text files. The text files are saved in the directory specified by `cfg.paths.data_dir` in the configuration file, with the nameing format `<blob_container_name>.txt`.
 
+2. CSV Report: The CalculatorBlobMetrics class generates a CSV file containing mismatch statistics, detailing any discrepancies found during analysis. The CSV files are saved in the directory specified by `cfg.paths.data_dir` in the configuration file, with the nameing format `mismatch_statistics_record.csv`.
+ 
+### `report_blob_metrics.py`
+
+1. ReporterBlobMetrics: Generates PDF reports from blob metrics stored in CSV files and saves the reports.
+
+### Usage
+
+1. Run the script with the configuration file as an argument:
+
+    ```bash
+    python main.py task=report_blob_metrics
+    ```
+
+### Output
+
+1. PDF Report: The ReporterBlobMetrics class generates a PDF report containing the blob metrics. The PDF file is saved in the directory specified by `cfg.paths.report` in the configuration file, with the naming format `semifield-developed-images_image_counts_and_averages_report.pdf`.

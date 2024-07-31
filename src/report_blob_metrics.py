@@ -15,13 +15,23 @@ class ReporterBlobMetrics:
     def __init__(self, cfg: DictConfig) -> None:
         """
         Initializes the BlobMetricReporter with configuration data.
+        args:
+            cfg: DictConfig - The configuration data.
+
+        Arguments:
+        report_dir: The directory where the report will be saved.
+        output_dir: The directory where the output data is saved.
         """
         self.report_dir = cfg.paths.report
         self.output_dir = cfg.paths.data_dir
         log.info("Initialized ReporterBlobMetrics with configuration data.")
 
     def generate_pdf_report(self, result_df: pd.DataFrame, output_path: Path) -> None:
-        """ Generates a PDF report with the given data and saves it to the output path."""
+        """ Generates a PDF report with the given data and saves it to the output path.
+        args:
+            result_df: The data to be included in the report.
+            output_path: The path where the report will be saved.
+        """
         pdf = FPDF()
         pdf.add_page()
         pdf.set_font("Arial", size=12)
@@ -72,6 +82,7 @@ def main(cfg: DictConfig) -> None:
     """Main function to execute the BlobMetricReporter."""
     log.info(f"Starting {cfg.task}")
     reporter = ReporterBlobMetrics(cfg)
+
     # Read the CSV file
     mismatch_statistics = pd.read_csv(Path(reporter.report_dir, 'mismatch_statistics_record.csv'))
 
