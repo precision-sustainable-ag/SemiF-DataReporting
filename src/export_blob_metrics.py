@@ -6,6 +6,7 @@ from omegaconf import DictConfig
 from tqdm import tqdm
 import os
 from utils.utils import read_yaml
+import shutil
 
 log = logging.getLogger(__name__)
 
@@ -41,7 +42,10 @@ class ExporterBlobMetrics:
                 n = 4 if k == "semifield-developed-images" else 2
                 outputtxt = Path(self.output_dir, k + ".txt")
                 # main azcopy list command
-                cmd = f'./azcopy ls "{url + sas}" | cut -d/ -f 1-{n} | awk \'!a[$0]++\' > {outputtxt}'
+                if os.path.exists("./azcopy"):
+                    cmd = f'./azcopy ls "{url + sas}" | cut -d/ -f 1-{n} | awk \'!a[$0]++\' > {outputtxt}'
+                else:
+                    cmd = f'azcopy ls "{url + sas}" | cut -d/ -f 1-{n} | awk \'!a[$0]++\' > {outputtxt}'
                 os.system(cmd)
 
     def organize_blob_list(self) -> None:
@@ -81,7 +85,7 @@ class CalculatorBlobMetrics:
             if not line.strip():
                 continue
             # in some versions of azcopy
-            if line.startswith('INFO: azcopy:'):
+            if line.startswith('INFO: azcopy'):
                 continue
             
             parts = line.split('/')
@@ -197,11 +201,11 @@ class CalculatorBlobMetrics:
         log.info(f"Calculated average image counts for {len(average_image_counts)} state-month groups.")
         return average_image_counts
 
-    def compute_matching(self,df: pd.DataFrame, matching_folders: list) -> tuple[pd.DataFrame, pd.DataFrame]:
+    def compute_matching(self,df: pd.DataFrame, matching_folders: dict) -> tuple[pd.DataFrame, pd.DataFrame]:
         """Compares file type lengths.
         Args:
             df: The DataFrame containing the batch data.
-            matching_folders: The list of important folders and corresponding file types.
+            matching_folders: Dictionary of important folders and corresponding file types.
         Returns:
             The DataFrame containing the mismatch statistics.
             The DataFrame containing unprocessed batches.
@@ -215,32 +219,30 @@ class CalculatorBlobMetrics:
         
         # Pivot the DataFrame to have the file types as columns
         grouped_df=grouped_df.pivot_table(values='count', index=["Batch", "FileName"], columns='FolderName', aggfunc='first').fillna(0).reset_index()
-        
-        #before we can check for the missing files, we need to check if the both masks are either available or not
-        grouped_df['masks'] = grouped_df.filter(like="masks").sum(axis=1).apply(lambda x: x*0.5)
-        log.error(f"Masks are compatible: {((grouped_df['masks'] == 2.0) | (grouped_df['masks'] == 0.0)).all()}")
 
         # Calculate the total number of files per one capture
-        grouped_df['all_files']=grouped_df[['metadata','images','masks']].astype(float).sum(1)
+        grouped_df['all_files']=grouped_df[matching_folders.keys()].astype(float).sum(1)
         # Calculate the total number of files per batch
-        batch_df=grouped_df.groupby('Batch').agg({'images':'sum','metadata':'sum','masks':'sum'}).reset_index()
+        batch_df=grouped_df.groupby('Batch').agg({'images':'sum','metadata':'sum','instance_masks':'sum','semantic_masks':'sum'}).reset_index()
         
         # Check for mismatch files
         for key, item in batch_df.iterrows():
             batch_missing=[]
             #since the number of rows are small, we can conduct a manual check
-            if item['metadata'] == item['images'] == item['masks']/2:
+            if item['metadata'] == item['images'] == item['semantic_masks'] == item['instance_masks']:
                 batch_df.loc[key, 'isMatching'] = 'True'
                 batch_df.loc[key, 'Missing images'] = 0
                 batch_df.loc[key, 'Missing metadata'] = 0
-                batch_df.loc[key, 'Missing mask'] = 0
+                batch_df.loc[key, 'Missing instance_masks'] = 0
+                batch_df.loc[key, 'Missing semantic_masks'] = 0
                 batch_df.at[key, 'Missing'] = []
             else:
                 batch_df.loc[key, 'isMatching'] = 'False'
-                batch_df.loc[key, 'Missing images'] = max(item['images':'masks'])-item['images']
-                batch_df.loc[key, 'Missing metadata'] = max(item['images':'masks'])-item['metadata']
-                batch_df.loc[key, 'Missing mask'] = max(item['images':'masks'])-item['masks']
-                if item['metadata'] == item['masks']==0.0:
+                batch_df.loc[key, 'Missing images'] = max(item['images':'semantic_masks'])-item['images']
+                batch_df.loc[key, 'Missing metadata'] = max(item['images':'semantic_masks'])-item['metadata']
+                batch_df.loc[key, 'Missing instance_masks'] = max(item['images':'semantic_masks'])-item['instance_masks']
+                batch_df.loc[key, 'Missing semantic_masks'] = max(item['images':'semantic_masks'])-item['semantic_masks']
+                if item['metadata'] == item['instance_masks'] == item['semantic_masks']  ==0.0:
                     log.warn(f"{item['Batch']} is unprocessed.")
                     batch_df.at[key, 'Missing'] = ['Unprocessed Batch']
                 else:
