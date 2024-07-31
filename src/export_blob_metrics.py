@@ -163,21 +163,35 @@ class CalculatorBlobMetrics:
         df_copy['Month'] = df['Batch'].apply(self.extract_month)
         return df_copy
 
-    def combine_data(self, image_counts: pd.DataFrame, average_image_counts: pd.DataFrame) -> pd.DataFrame:
-        """ Combines image counts and average image counts into a single DataFrame."""
+    def combine_data(self, df1: pd.DataFrame, df2: pd.DataFrame) -> pd.DataFrame:
+        """ Combines image counts and average image counts into a single DataFrame.
+        Args:
+            df1: First DataFrame.
+            df2: Second DataFrame.
+        Returns:
+            The combined DataFrame.
+            """
 
-        result_df = pd.merge(image_counts, average_image_counts, on=['State', 'Month'])
+        result_df = pd.merge(df1, df2, on=['State', 'Month'])
         return result_df
         
     def calculate_image_counts(self,df: pd.DataFrame) -> pd.DataFrame:
-        """Calculates the image counts grouped by state, month, and batch."""
+        """Calculates the image counts grouped by state, month, and batch.
+        Args:
+            df: The DataFrame containing the batch data.
+        Returns:
+            The DataFrame containing the image counts."""
 
         image_counts = df[df['FileType'].isin(['jpg', 'png'])].groupby(['State', 'Month', 'Batch']).size().reset_index(name='ImageCount')
         log.info(f"Calculated image counts for {len(image_counts)} batches.")
         return image_counts
 
     def calculate_average_image_counts(self,image_counts: pd.DataFrame) -> pd.DataFrame:
-        """Calculates the average image counts grouped by state and month."""
+        """Calculates the average image counts grouped by state and month.
+        Args:
+            image_counts: The DataFrame containing the image counts.
+        Returns:
+            The DataFrame containing the average image counts."""
 
         average_image_counts = image_counts.groupby(['State', 'Month'])['ImageCount'].mean().reset_index(name='AverageImageCount')
         log.info(f"Calculated average image counts for {len(average_image_counts)} state-month groups.")
