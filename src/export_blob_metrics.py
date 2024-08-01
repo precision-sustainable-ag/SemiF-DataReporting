@@ -69,12 +69,14 @@ class CalculatorBlobMetrics:
         """
         self.output_dir = cfg.paths.data_dir
         self.report_dir = cfg.paths.report
+        self.matching_folders = cfg.matching_folders
         log.info("Initialized Exporting BlobMetrics with configuration data.")
 
-    def extract_batches(self, lines: list[str]) -> list[tuple[str, str]]:
+    def extract_batches(self, lines: list[str], txt_name:str) -> list[tuple[str, str]]:
         """Function to extract batch names and file types
         Args:
             lines: The list of lines from the blob list text file.
+            file_name: A boolean to indicate if the blob is a cutout blob or not.
         Returns:
             The list of tuples containing the batch name file name and file type.
             """
@@ -96,7 +98,15 @@ class CalculatorBlobMetrics:
                 batch = parts[0]
             
             full_filename = parts[-1].split(";")[0].strip()
-            folder_name=parts[-2]
+
+            # Extract the folder name from the full filename
+            if 'cutouts' in txt_name:
+                if 'mask' in full_filename:
+                    folder_name=parts[-1].split('_')[-3]
+                else:
+                    folder_name=parts[-1].split('_')[-2]
+            else:
+                folder_name=parts[-2]
             
             if '.' in full_filename:
                 file_type = full_filename.split('.')[-1]
@@ -111,7 +121,6 @@ class CalculatorBlobMetrics:
             else:
                 file_type = 'folder'
                 file_name=full_filename
-
             batches.append((batch, folder_name, file_name, file_type))
         log.info(f"Extracted {len(batches)} batches.")
         return batches
@@ -201,18 +210,17 @@ class CalculatorBlobMetrics:
         log.info(f"Calculated average image counts for {len(average_image_counts)} state-month groups.")
         return average_image_counts
 
-    def compute_matching(self,df: pd.DataFrame, matching_folders: dict) -> tuple[pd.DataFrame, pd.DataFrame]:
+    def compute_matching(self,df: pd.DataFrame) -> tuple[pd.DataFrame, pd.DataFrame]:
         """Compares file type lengths.
         Args:
             df: The DataFrame containing the batch data.
-            matching_folders: Dictionary of important folders and corresponding file types.
         Returns:
             The DataFrame containing the mismatch statistics.
             The DataFrame containing unprocessed batches.
         """
         
         # Filter the DataFrame to include only the matching folders and file types
-        grouped_df=df[df['FolderName'].isin(matching_folders.keys()) & df['FileType'].isin(matching_folders.values())]
+        grouped_df=df[df['FolderName'].isin(self.matching_folders.keys()) & df['FileType'].isin(self.matching_folders.values())]
         
         # Group the DataFrame by Batch, FileType, and FileName and calculate the number of files
         grouped_df=grouped_df.groupby(["Batch", "FolderName","FileName"]).size().reset_index(name='count')
@@ -221,7 +229,7 @@ class CalculatorBlobMetrics:
         grouped_df=grouped_df.pivot_table(values='count', index=["Batch", "FileName"], columns='FolderName', aggfunc='first').fillna(0).reset_index()
 
         # Calculate the total number of files per one capture
-        grouped_df['all_files']=grouped_df[matching_folders.keys()].astype(float).sum(1)
+        grouped_df['all_files']=grouped_df[self.matching_folders.keys()].astype(float).sum(1)
         # Calculate the total number of files per batch
         batch_df=grouped_df.groupby('Batch').agg({'images':'sum','metadata':'sum','instance_masks':'sum','semantic_masks':'sum'}).reset_index()
         
@@ -249,7 +257,7 @@ class CalculatorBlobMetrics:
                     log.warn(f"{item['Batch']} does not contain all reuqired files.")
                     # Define the file types we are interested in
                     for secondary_keys, expected_file in grouped_df[grouped_df['Batch']==item['Batch']].iterrows():
-                        batch_missing.extend([f"{expected_file['FileName']}.{matching_folders[x[0]]}" for x in expected_file['images':'semantic_masks'].items() if x[1]==0.0])
+                        batch_missing.extend([f"{expected_file['FileName']}.{self.matching_folders[x[0]]}" for x in expected_file['images':'semantic_masks'].items() if x[1]==0.0])
                     
                     batch_df.at[key, 'Missing'] = batch_missing
                 
@@ -264,42 +272,93 @@ class CalculatorBlobMetrics:
         log.info(f"Calculated mismatch statistics for {len(batch_df)} batches.")  
         return batch_df, unprocessed_batches
 
+    def compare_cutout_blob(self,df: pd.DataFrame) -> tuple[pd.DataFrame, pd.DataFrame]:
+        """Compares file type lengths.
+        Args:
+            df: The DataFrame containing the batch data.
+        Returns:
+            The DataFrame containing the match statistics.
+            The DataFrame containing unprocessed batches.
+        """
+
+        # Filter the DataFrame to include only the matching folders and file types
+        grouped_df = df[df['FileType'].isin(self.matching_folders.values())]
+        
+        #update the file type to include the mask files
+        grouped_df.loc[grouped_df['FileName'].str.contains('mask'), 'FileType'] = 'mask'
+        #remove the _mask from the file name
+        grouped_df['FileName']=grouped_df['FileName'].map(lambda x: x.replace("_mask", "") if 'mask' in x else x)
+        #number of the number of:masks (*_mask.png), cropouts (*.jpg), cutouts (*.png), metadata (*.json)
+        batch_df=grouped_df.groupby(["Batch", "FileType"]).size().reset_index(name='count')
+
+        batch_df=batch_df.pivot_table(values='count', index="Batch", columns='FileType', aggfunc='first').fillna(0).reset_index()
+
+        # Group the DataFrame by Batch, FileType, and FileName and calculate the number of files
+        grouped_df=grouped_df.groupby(["Batch", "FolderName","FileName"]).size().reset_index(name='count')
+        # find the unmatched files
+        unprocessed_df=grouped_df[~(grouped_df['count'] == 4)]
+        return batch_df, unprocessed_df
+    
+    def load_data(self, data_file: Path) -> pd.DataFrame:
+        """Loads the data from the given path.
+        Args:
+            path: The path to the data file.
+        Returns:
+            The DataFrame containing the data.
+            """
+        # Load the text file
+        file_path = Path(self.output_dir,data_file)
+        with open(file_path, 'r') as file:
+            lines = file.readlines()
+    
+        log.info(f"Start calculating blob metrics with {len(lines)} of data.")
+
+        #Extract the batches and create a DataFrame
+        batches = self.extract_batches(lines,data_file)
+        df = pd.DataFrame(batches, columns=['Batch', 'FolderName', 'FileName', 'FileType'])
+        log.info(f"Created DataFrame with {len(df)} rows.")
+
+        # Format the dataframe
+        df_filtered = self.format_data(df)
+        return df_filtered
+    
+    def save_data(self, df_stat: pd.DataFrame, df_unprocess: pd.DataFrame, file_names: list) -> None:
+        """Saves the data to the given path.
+        Args:
+            df: The DataFrame containing the data.
+            file_name: Names of the files to save the data.
+            """
+        save_csv_dir = Path(self.output_dir, "blob_containers")
+        save_csv_dir.mkdir(exist_ok=True, parents=True)
+        df_stat.to_csv(Path(save_csv_dir, file_names[0]), sep=',', encoding='utf-8', index=False, header=True)
+        df_unprocess.to_csv(Path(save_csv_dir, file_names[1]), sep=',', encoding='utf-8', index=False, header=True)
+        return None
 
 def main(cfg: DictConfig) -> None:
     """Main function to execute the BlobMetricExporter."""
 
     log.info(f"Starting {cfg.task}")
     exporter = ExporterBlobMetrics(cfg)
-    exporter.run_azcopy_ls()
+    # exporter.run_azcopy_ls()
     log.info("Extracting data completed.")
 
-    # Load the text file
-    file_path = Path(cfg.paths.data_dir,'semifield-developed-images.txt')
-    with open(file_path, 'r') as file:
-        lines = file.readlines()
-    
-    log.info(f"Start calculating blob metrics with {len(lines)} of data.")
+
     calculator = CalculatorBlobMetrics(cfg)
-
-    #Extract the batches and create a DataFrame
-    batches = calculator.extract_batches(lines)
-    df = pd.DataFrame(batches, columns=['Batch', 'FolderName', 'FileName', 'FileType'])
-    log.info(f"Created DataFrame with {len(df)} rows.")
-
-    # Format the dataframe
-    df_filtered = calculator.format_data(df)
-
+    df_developed=calculator.load_data('semifield-developed-images.txt')
+    df_cutout=calculator.load_data('semifield-cutouts.txt')
+    
     # Calculate image counts and averages
-    image_counts = calculator.calculate_image_counts(df_filtered)
+    image_counts = calculator.calculate_image_counts(df_developed)
     average_image_counts = calculator.calculate_average_image_counts(image_counts)
 
     #Compare file type lengths
-    mismatch_statistics,unprocessed_batches=calculator.compute_matching(df_filtered,cfg.matching_folders)
+    mismatch_statistics_cutout, unprocessed_batches_cutout=calculator.compare_cutout_blob(df_cutout)
+    mismatch_statistics_developed, unprocessed_batches_developed=calculator.compute_matching(df_developed)
+    
 
     #writing the mismatch statistics to a csv file for now
-    save_csv_dir = Path(cfg.paths.data_dir, "blob_containers")
-    save_csv_dir.mkdir(exist_ok=True, parents=True)
-    mismatch_statistics.to_csv(Path(save_csv_dir, 'mismatch_statistics_record.csv'), sep=',', encoding='utf-8', index=False, header=True)
-    unprocessed_batches.to_csv(Path(save_csv_dir, 'unprocessed_batches.csv'), sep=',', encoding='utf-8', index=False, header=True)
-
+    
+    calculator.save_data(mismatch_statistics_developed, unprocessed_batches_developed, ['mismatch_statistics_developed.csv','unprocessed_batches_developed.csv'])
+    calculator.save_data(mismatch_statistics_cutout, unprocessed_batches_cutout, ['mismatch_statistics_cutout.csv','unprocessed_batches_cutout.csv'])
+    
     log.info(f"{cfg.task} completed.")
