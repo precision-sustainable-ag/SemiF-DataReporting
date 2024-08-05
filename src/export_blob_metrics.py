@@ -7,6 +7,7 @@ from tqdm import tqdm
 import os
 from utils.utils import read_yaml
 import shutil
+import re
 
 log = logging.getLogger(__name__)
 
@@ -39,7 +40,7 @@ class ExporterBlobMetrics:
             else:
                 url = self.__auth_config_data["blobs"][k]["url"]
                 sas = self.__auth_config_data["blobs"][k]["sas_token"]
-                n = 4 if k == "semifield-developed-images" else 2
+                n = 2 if k == "semifield-cutouts" else 4
                 outputtxt = Path(self.output_dir, k + ".txt")
                 # main azcopy list command
                 if os.path.exists("./azcopy"):
@@ -70,6 +71,7 @@ class CalculatorBlobMetrics:
         self.output_dir = cfg.paths.data_dir
         self.report_dir = cfg.paths.report
         self.matching_folders = cfg.matching_folders
+        self.valid_pattern = r'^[A-Z]{2}_\d{4}-\d{2}-\d{2}$'
         log.info("Initialized Exporting BlobMetrics with configuration data.")
 
     def extract_batches(self, lines: list[str], txt_name:str) -> list[tuple[str, str]]:
@@ -96,6 +98,14 @@ class CalculatorBlobMetrics:
                 batch = parts[0].replace('INFO: ', '').strip()
             else:
                 batch = parts[0]
+            
+            #remove loose files without a folder
+            if len(parts)==1 and '.' in parts[0]:
+                continue
+
+            #extract the batch name from the file name for semi field uploads
+            if 'uploads' in txt_name and re.compile(r'[A-Z]{2}_\d{4}-\d{2}-\d{2}').search(parts[0]) != None:
+                batch=re.compile(r'[A-Z]{2}_\d{4}-\d{2}-\d{2}').search(parts[0]).group()
             
             full_filename = parts[-1].split(";")[0].strip()
 
@@ -133,9 +143,18 @@ class CalculatorBlobMetrics:
         Returns:
             The filtered DataFrame."""
         
-        valid_pattern = r'^[A-Z]{2}_\d{4}-\d{2}-\d{2}$'
-        invalid_batches = df[~df[column_name].str.contains(valid_pattern, regex=True)][column_name].unique()        
-        filtered_df = df[df[column_name].str.contains(valid_pattern, regex=True)]
+        # if extra_patterns:
+        #     valid_pattern = r'^[A-Z]{2}_\d{4}-\d{2}-\d{2}'
+        #     regexp = re.compile(valid_pattern)
+            
+        #     filtered_df[column_name]=df[column_name].map(lambda x: x.replace("_mask", "") if regexp.search(x) else x)
+            
+        #     filtered_df = df[df[column_name].str.contains(valid_pattern, regex=True)]
+        #     filtered_df = df[df[column_name].str.contains(valid_pattern, regex=True)]
+        # else:
+            
+        invalid_batches = df[~df[column_name].str.contains(self.valid_pattern, regex=True)][column_name].unique()        
+        filtered_df = df[df[column_name].str.contains(self.valid_pattern, regex=True)]
         
         log.info(f"Removed {len(invalid_batches)} unique batches due to invalid pattern.")
         return filtered_df
@@ -299,6 +318,31 @@ class CalculatorBlobMetrics:
         unprocessed_df=grouped_df[~(grouped_df['count'] == 4)]
         return batch_df, unprocessed_df
     
+    def uncolorize(self, df_developed: pd.DataFrame, df_upload: pd.DataFrame) -> list[str]:
+        """Identify uncolorized images(they exist in semifield-uploads but not in semifield-developed-images).
+        Args:
+            df_developed: The DataFrame containing semifield-developed-images data.
+            df_upload: The DataFrame containing semifield-uploads data.
+        Returns:
+            DataFrame containing uncolorized image names for each batch.
+            """
+        #filter the data to only include ARW files and JPG files
+        df_upload=df_upload[df_upload['FileType']=='ARW']
+        df_developed=df_developed[(df_developed['FileType']=='jpg') & (df_developed['FolderName']=='images')]
+
+        #group the data by batch and count the number of images
+        df_upload_stat=df_upload.groupby(["Batch"]).size().reset_index(name='count')
+
+        #find the batches that are not in the developed images
+        uncolorized_batches = [x for x in df_upload.groupby(["Batch"]).groups.keys() if x not in df_developed.groupby(["Batch"]).groups.keys()]
+        
+        log.info(f"Found {len(uncolorized_batches)} batches with uncolorized images.")
+        #check if there are any batches that are not in the semifield-uploads data
+        temp_check = [x for x in df_developed.groupby(["Batch"]).groups.keys() if x not in df_upload.groupby(["Batch"]).groups.keys()]
+        assert len(temp_check)==0, f"These batches {temp_check} exists only in semifield-developed-images recheck the batch names for errors."
+
+        return df_upload_stat,pd.DataFrame(uncolorized_batches, columns=['Batch'])
+    
     def load_data(self, data_file: Path) -> pd.DataFrame:
         """Loads the data from the given path.
         Args:
@@ -344,21 +388,27 @@ def main(cfg: DictConfig) -> None:
 
 
     calculator = CalculatorBlobMetrics(cfg)
+    df_upload=calculator.load_data('semifield-uploads.txt')
+    
+
     df_developed=calculator.load_data('semifield-developed-images.txt')
     df_cutout=calculator.load_data('semifield-cutouts.txt')
+
+    
     
     # Calculate image counts and averages
     image_counts = calculator.calculate_image_counts(df_developed)
     average_image_counts = calculator.calculate_average_image_counts(image_counts)
 
     #Compare file type lengths
+    dataset_statistics_upload, uncolorized_batches=calculator.uncolorize(df_developed, df_upload)
     mismatch_statistics_cutout, unprocessed_batches_cutout=calculator.compare_cutout_blob(df_cutout)
     mismatch_statistics_developed, unprocessed_batches_developed=calculator.compute_matching(df_developed)
     
 
     #writing the mismatch statistics to a csv file for now
-    
     calculator.save_data(mismatch_statistics_developed, unprocessed_batches_developed, ['mismatch_statistics_developed.csv','unprocessed_batches_developed.csv'])
     calculator.save_data(mismatch_statistics_cutout, unprocessed_batches_cutout, ['mismatch_statistics_cutout.csv','unprocessed_batches_cutout.csv'])
+    calculator.save_data(dataset_statistics_upload, uncolorized_batches, ['dataset_statistics_upload.csv','uncolorized_batches.csv'])
     
     log.info(f"{cfg.task} completed.")
