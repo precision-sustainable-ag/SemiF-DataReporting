@@ -23,10 +23,12 @@ class ReporterBlobMetrics:
         report_dir: The directory where the report will be saved.
         output_dir: The directory where the output data is saved.
         blob_containers: A boolean indicating whether the data is from blob containers.
+        pdf: The FPDF object used to generate the PDF report.
         """
         self.report_dir = cfg.paths.report
         self.output_dir = cfg.paths.data_dir
         self.blob_containers = cfg.report.blob_containers
+        self.pdf = FPDF()
         log.info("Initialized ReporterBlobMetrics with configuration data.")
 
     def generate_pdf_report(self, result_df_list: dict[pd.DataFrame], output_path: Path) -> None:
@@ -35,56 +37,61 @@ class ReporterBlobMetrics:
             result_df: The data to be included in the report.
             output_path: The path where the report will be saved.
         """
-        pdf = FPDF()
 
-        pdf.add_page()
-        pdf.set_font("Arial", size=12)
+        self.pdf.add_page()
+        self.pdf.set_font("Arial", size=12)
         # pdf.cell(200, 10, txt="Image Counts and Averages Report", ln=True, align='C')
         # for index, row in result_df.iterrows():
         #     pdf.cell(200, 5, txt=f"{row['Batch']}", ln=True)
         #     pdf.cell(200, 5, txt=f"Image Count: {row['ImageCount']}", ln=True)
         #     pdf.cell(200, 5, txt=f"Average Image Count: {row['AverageImageCount']:.2f}", ln=True)
         #     pdf.ln(10)
-        line_height = pdf.font_size
+        line_height = self.pdf.font_size
+        self.pdf.set_font("Times", size=10)
         for df_name in result_df_list:
-            pdf.add_page()
-            pdf.set_font("Times", size=10)
-            
-            col_width = pdf.epw /12
-            pdf.cell(200, 10, txt=df_name, ln=True, align='C') 
 
+            self.pdf.add_page()
+            
             df = result_df_list[df_name]
+
+            col_width = self.pdf.epw /(len(df.columns)+3)
+            
+            self.pdf.cell(200, 10, txt=df_name, ln=True, align='C') 
+            
             #one liner for removing lengthy lists in the last cell to first three files.
             df = df.map(lambda y: y[:3]+['...',] if isinstance(y, list) and len(y)>3 else y )
             
             logging.info(f"Creating the batch statistics report.")
             #create your fpdf table ..
-            for j,row in df.iterrows():
-                #add the column names
-                if j==0:
-                    for header in df.columns:
-                        pdf.cell(col_width, line_height, str(header), border=1)
-                    pdf.ln(line_height)
+
+            #add the column names
+            self.pdf_row(df.columns, col_width, line_height)
+            self.pdf.ln(line_height)
+            for j,row in df.iterrows():            
                 #choose right height for current row
-                if 'Missing' in row and len(row['Missing'])>1:
-                    line_height=pdf.font_size*(len(row['Missing']))
+                if 'Missing' in row and len(row['Missing'])>4:
+                    line_height=self.pdf.font_size*3
                 else:
-                    line_height=pdf.font_size
+                    line_height=self.pdf.font_size
                 #draw each cell in the row
-                for i,datum in enumerate(row):                    
-                    if i== 8:
-                        pdf.multi_cell(col_width*3, line_height, str(datum), border=1,align='L',ln=3, 
-                    max_line_height=pdf.font_size)
-                    elif i==0:
-                        pdf.multi_cell(col_width*2, line_height, str(datum), border=1,align='L',ln=3, max_line_height=pdf.font_size)
-                    else:
-                        pdf.multi_cell(col_width, line_height, str(datum), border=1,align='L',ln=3, max_line_height=pdf.font_size)
+
+                self.pdf_row(row, col_width, line_height)
    
+                self.pdf.ln(line_height)
+            
 
-            pdf.ln(line_height)
-
-        pdf.output(output_path)
+        self.pdf.output(output_path)
         log.info(f"PDF report generated and saved to {output_path}.")
+    
+    def pdf_row(self, row: pd.Series, col_width: float, line_height: float) -> None:
+        for i,datum in enumerate(row):                    
+            if i== 8:
+                self.pdf.multi_cell(col_width*3, line_height, str(datum), border=1,align='L',ln=3, 
+            max_line_height=self.pdf.font_size)
+            elif i==0:
+                self.pdf.multi_cell(col_width*2, line_height, str(datum), border=1,align='L',ln=3, max_line_height=self.pdf.font_size)
+            else:
+                self.pdf.multi_cell(col_width, line_height, str(datum), border=1,align='L',ln=3, max_line_height=self.pdf.font_size)
     
     def save_pdf(self) -> None:
         """Conect csv to a PDF report.

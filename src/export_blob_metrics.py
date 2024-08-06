@@ -8,6 +8,8 @@ import os
 from utils.utils import read_yaml
 import shutil
 import re
+import matplotlib.pyplot as plt
+import seaborn as sns
 
 log = logging.getLogger(__name__)
 
@@ -215,6 +217,7 @@ class CalculatorBlobMetrics:
             The DataFrame containing the image counts."""
 
         image_counts = df[df['FileType'].isin(['jpg', 'png'])].groupby(['State', 'Month', 'Batch']).size().reset_index(name='ImageCount')
+
         log.info(f"Calculated image counts for {len(image_counts)} batches.")
         return image_counts
 
@@ -226,8 +229,107 @@ class CalculatorBlobMetrics:
             The DataFrame containing the average image counts."""
 
         average_image_counts = image_counts.groupby(['State', 'Month'])['ImageCount'].mean().reset_index(name='AverageImageCount')
+        
+        seasons={'summer_season':['04','05', '06','07','08'], 'cool_season_1':['09','10','11','12'], 'cool_season_2':['01','02','03']}
+        average_image_counts['Season']=average_image_counts['Month'].map(lambda x: 'summer_season_'+x[2:4] if x[5:7] in seasons['summer_season'] else ('cool_season_'+x[2:4]+'_'+str(int(x[2:4])+1) if x[5:7] in seasons['cool_season_1'] else 'cool_season_'+str(int(x[2:4])-1)+'_'+x[2:4]))
         log.info(f"Calculated average image counts for {len(average_image_counts)} state-month groups.")
         return average_image_counts
+    
+    def calculate_average_batch_counts(self, df: pd.DataFrame) -> pd.DataFrame:
+        """Calculates the blob statistics for semifield-developed-images.
+        Args:
+            df: The DataFrame containing the batch data.
+        Returns:    
+            The DataFrame containing the blob statistics.
+            """
+        
+        return df
+    
+    def plot_average_delevloped_stats(self, plot_data: pd.DataFrame) -> None:
+        """
+        Generate a bar plot showing the distribution of images by month, location, "season".
+        """
+        log.info("Generating bar plot for average number of images by season.")
+
+        unique_season_count = (
+            plot_data.groupby(["Season","State"])['AverageImageCount']
+            .sum()
+            .reset_index(name="season_count")
+        )
+        # Define state palette with new labels
+        state_palette = {
+            "MD": "#4C72B0",
+            "NC": "#55A868",
+            "TX": "#C44E52",
+        }
+        
+        with plt.style.context("ggplot"):
+            fig, ax = plt.subplots(figsize=(12, 6))
+            
+            bar_plot = sns.barplot(
+                data=unique_season_count,
+                x="Season",
+                y="season_count",
+                hue="State",
+                palette=state_palette,
+                hue_order=state_palette.keys(),
+                ax=ax,
+            )
+            
+            ax.set_xticks(ax.get_xticks())
+            ax.set_xticklabels(ax.get_xticklabels(), rotation=45)
+            ax.set_ylabel("Number of Samples")
+            ax.set_xlabel("Season")
+            ax.set_title(" Samples by Season")
+            ax.legend(title="States")
+            
+            # Add labels to each bar
+            for bar_container in bar_plot.containers:
+                ax.bar_label(bar_container, label_type='edge', padding=3, fontsize=7)
+
+            fig.tight_layout()
+            save_path = f"{self.output_dir}/unique_season_count.png"
+            fig.savefig(save_path, dpi=300)
+        
+
+        log.info("Generating bar plot for average number of images by month.")
+
+        unique_month_count = (
+            plot_data.groupby(["Month","State"])['AverageImageCount']
+            .sum()
+            .reset_index(name="month_count")
+        )
+        
+        # Plotting
+        with plt.style.context("ggplot"):
+            fig, ax = plt.subplots(figsize=(12, 6))
+            
+            bar_plot = sns.barplot(
+                data=unique_month_count,
+                x="Month",
+                y="month_count",
+                hue="State",
+                palette=state_palette,
+                hue_order=state_palette.keys(),
+                ax=ax,
+            )
+            
+            ax.set_xticks(ax.get_xticks())
+            ax.set_xticklabels(ax.get_xticklabels(), rotation=45)
+            ax.set_ylabel("Number of Samples")
+            ax.set_xlabel("Month")
+            ax.set_title(" Samples by Month")
+            ax.legend(title="States")
+            
+            # Add labels to each bar
+            for bar_container in bar_plot.containers:
+                ax.bar_label(bar_container, label_type='edge', padding=3, fontsize=7)
+
+            fig.tight_layout()
+            save_path = f"{self.output_dir}/unique_month_count.png"
+            fig.savefig(save_path, dpi=300)
+        import pdb; pdb.set_trace()
+        log.info("Species distribution for current season plot saved.")
 
     def compute_matching(self,df: pd.DataFrame) -> tuple[pd.DataFrame, pd.DataFrame]:
         """Compares file type lengths.
@@ -394,17 +496,15 @@ def main(cfg: DictConfig) -> None:
     df_developed=calculator.load_data('semifield-developed-images.txt')
     df_cutout=calculator.load_data('semifield-cutouts.txt')
 
-    
-    
     # Calculate image counts and averages
     image_counts = calculator.calculate_image_counts(df_developed)
     average_image_counts = calculator.calculate_average_image_counts(image_counts)
+    calculator.plot_average_delevloped_stats(average_image_counts)
 
     #Compare file type lengths
     dataset_statistics_upload, uncolorized_batches=calculator.uncolorize(df_developed, df_upload)
     mismatch_statistics_cutout, unprocessed_batches_cutout=calculator.compare_cutout_blob(df_cutout)
     mismatch_statistics_developed, unprocessed_batches_developed=calculator.compute_matching(df_developed)
-    
 
     #writing the mismatch statistics to a csv file for now
     calculator.save_data(mismatch_statistics_developed, unprocessed_batches_developed, ['mismatch_statistics_developed.csv','unprocessed_batches_developed.csv'])
