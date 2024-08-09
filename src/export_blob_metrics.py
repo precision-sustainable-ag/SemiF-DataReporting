@@ -281,22 +281,39 @@ class CalculatorBlobMetrics:
             The DataFrame containing unprocessed batches.
         """
 
+        # rename FolderName to TimeStamp for convienience
+        df.rename(columns={'FolderName':'TimeStamp'}, inplace=True)
         # Filter the DataFrame to include only the matching folders and file types
         grouped_df = df[df['FileType'].isin(self.matching_folders.values())]
         
         #update the file type to include the mask files
         grouped_df.loc[grouped_df['FileName'].str.contains('mask'), 'FileType'] = 'mask'
         #remove the _mask from the file name
-        grouped_df['FileName']=grouped_df['FileName'].map(lambda x: x.replace("_mask", "") if 'mask' in x else x)
+        grouped_df.loc[:,'FileName']=grouped_df['FileName'].map(lambda x: x.replace("_mask", "") if 'mask' in x else x)
         #number of the number of:masks (*_mask.png), cropouts (*.jpg), cutouts (*.png), metadata (*.json)
         batch_df=grouped_df.groupby(["Batch", "FileType"]).size().reset_index(name='count')
-
+        # Pivot the DataFrame to have the file types as columns
         batch_df=batch_df.pivot_table(values='count', index="Batch", columns='FileType', aggfunc='first').fillna(0).reset_index()
 
         # Group the DataFrame by Batch, FileType, and FileName and calculate the number of files
-        grouped_df=grouped_df.groupby(["Batch", "FolderName","FileName"]).size().reset_index(name='count')
+        grouped_df=grouped_df.groupby(["Batch", "TimeStamp","FileName"])['FileType'].agg(lambda col: ','.join(col)).reset_index(name='TypeList')
+        grouped_df['Count']=grouped_df['TypeList'].apply(lambda x: len(x.split(',')))
+        
         # find the unmatched files
-        unprocessed_df=grouped_df[~(grouped_df['count'] == 4)]
+        unprocessed_df=grouped_df[~(grouped_df['Count'] == 4)]
+        
+        # Calculate the missing number of files for each batch
+        n_missing_cropout=[1 if 'jpg' not in x else 0 for x in unprocessed_df['TypeList']]
+        n_missing_cutouts=[1 if 'png' not in x else 0 for x in unprocessed_df['TypeList']]
+        n_missing_masks=[1 if 'mask' not in x else 0 for x in unprocessed_df['TypeList']]
+        n_missing_metadata=[1 if 'json' not in x else 0 for x in unprocessed_df['TypeList']]
+
+        new_data = {'n_missing_cropout': n_missing_cropout, 'n_missing_cutouts': n_missing_cutouts, 'n_missing_masks': n_missing_masks, 'n_missing_metadata': n_missing_metadata}
+        unprocessed_df = unprocessed_df.assign(**new_data)
+
+        #drop temp columns
+        unprocessed_df.drop(columns=['TypeList'], inplace=True)
+
         return batch_df, unprocessed_df
     
     def load_data(self, data_file: Path) -> pd.DataFrame:
@@ -359,6 +376,6 @@ def main(cfg: DictConfig) -> None:
     #writing the mismatch statistics to a csv file for now
     
     calculator.save_data(mismatch_statistics_developed, unprocessed_batches_developed, ['mismatch_statistics_developed.csv','unprocessed_batches_developed.csv'])
-    calculator.save_data(mismatch_statistics_cutout, unprocessed_batches_cutout, ['mismatch_statistics_cutout.csv','unprocessed_batches_cutout.csv'])
+    calculator.save_data(mismatch_statistics_cutout, unprocessed_batches_cutout, ['statistics_cutout.csv','batches_wih_missed_files_cutout.csv'])
     
     log.info(f"{cfg.task} completed.")
