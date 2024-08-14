@@ -231,7 +231,10 @@ class CalculatorBlobMetrics:
         average_image_counts = image_counts.groupby(['State', 'Month'])['ImageCount'].mean().reset_index(name='AverageImageCount')
         
         seasons={'summer_season':['04','05', '06','07','08'], 'cool_season_1':['09','10','11','12'], 'cool_season_2':['01','02','03']}
+        
         average_image_counts['Season']=average_image_counts['Month'].map(lambda x: 'summer_season_'+x[2:4] if x[5:7] in seasons['summer_season'] else ('cool_season_'+x[2:4]+'_'+str(int(x[2:4])+1) if x[5:7] in seasons['cool_season_1'] else 'cool_season_'+str(int(x[2:4])-1)+'_'+x[2:4]))
+
+        print('average image counts')
         log.info(f"Calculated average image counts for {len(average_image_counts)} state-month groups.")
         return average_image_counts
     
@@ -243,7 +246,32 @@ class CalculatorBlobMetrics:
             The DataFrame containing the blob statistics.
             """
         
-        return df
+        batch_counts = df.groupby(['State', 'Month'])['Batch'].nunique().reset_index(name='BatchCount')
+        print('batch counts')
+        print(batch_counts)
+        return batch_counts
+    
+    def calculate_average_cutout_counts(self, df: pd.DataFrame, unprocessed_df: pd.DataFrame) -> pd.DataFrame:
+        """Calculates the blob statistics for semifield-developed-images.
+        Args:
+            df: The DataFrame containing the batch data.
+        Returns:    
+            The DataFrame containing the blob statistics.
+            """
+        
+        #clean out the mask files
+        df = df[df['FileType'].isin(self.matching_folders.values())]
+        df['FileName']=df['FileName'].map(lambda x: x.replace("_mask", "") if 'mask' in x else x)
+        cutout_counts=df[~df['FileName'].isin(unprocessed_df['FileName'])]
+
+        cutout_counts=cutout_counts.groupby(['Month', 'Batch', 'FolderName']).size().div(4).reset_index(name='CutoutCount')
+        print('cutout counts')
+        print(cutout_counts)
+        #chacking for the average cutout count per image per month
+        average_count=cutout_counts.groupby(['Month'])['CutoutCount'].mean().reset_index(name='AverageMonthlyCutoutCount')
+        print('monthly average cutout counts')
+        print(average_count)
+        return cutout_counts
     
     def plot_average_delevloped_stats(self, plot_data: pd.DataFrame) -> None:
         """
@@ -278,7 +306,7 @@ class CalculatorBlobMetrics:
             
             ax.set_xticks(ax.get_xticks())
             ax.set_xticklabels(ax.get_xticklabels(), rotation=45)
-            ax.set_ylabel("Number of Samples")
+            ax.set_ylabel("Number of JPG Images")
             ax.set_xlabel("Season")
             ax.set_title(" Samples by Season")
             ax.legend(title="States")
@@ -328,7 +356,6 @@ class CalculatorBlobMetrics:
             fig.tight_layout()
             save_path = f"{self.output_dir}/unique_month_count.png"
             fig.savefig(save_path, dpi=300)
-        import pdb; pdb.set_trace()
         log.info("Species distribution for current season plot saved.")
 
     def compute_matching(self,df: pd.DataFrame) -> tuple[pd.DataFrame, pd.DataFrame]:
@@ -433,17 +460,21 @@ class CalculatorBlobMetrics:
         df_developed=df_developed[(df_developed['FileType']=='jpg') & (df_developed['FolderName']=='images')]
 
         #group the data by batch and count the number of images
-        df_upload_stat=df_upload.groupby(["Batch"]).size().reset_index(name='count')
+        df_upload_stat=df_upload.groupby(["Batch"]).size().reset_index(name='ARWCount')
+        
 
         #find the batches that are not in the developed images
-        uncolorized_batches = [x for x in df_upload.groupby(["Batch"]).groups.keys() if x not in df_developed.groupby(["Batch"]).groups.keys()]
+        uncolorized_batches = [[x,df_upload_stat.loc[df_upload_stat["Batch"]==x,'ARWCount'].values[0]] for x in df_upload_stat.groupby(["Batch"]).groups.keys() if x not in df_developed.groupby(["Batch"]).groups.keys()]
+        import pdb; pdb.set_trace()
+        uncolorized_batches= pd.DataFrame(uncolorized_batches, columns=['Batch','ARWCount'])
+        
         
         log.info(f"Found {len(uncolorized_batches)} batches with uncolorized images.")
         #check if there are any batches that are not in the semifield-uploads data
         temp_check = [x for x in df_developed.groupby(["Batch"]).groups.keys() if x not in df_upload.groupby(["Batch"]).groups.keys()]
         assert len(temp_check)==0, f"These batches {temp_check} exists only in semifield-developed-images recheck the batch names for errors."
 
-        return df_upload_stat,pd.DataFrame(uncolorized_batches, columns=['Batch'])
+        return df_upload_stat, uncolorized_batches
     
     def load_data(self, data_file: Path) -> pd.DataFrame:
         """Loads the data from the given path.
@@ -491,20 +522,23 @@ def main(cfg: DictConfig) -> None:
 
     calculator = CalculatorBlobMetrics(cfg)
     df_upload=calculator.load_data('semifield-uploads.txt')
-    
-
     df_developed=calculator.load_data('semifield-developed-images.txt')
     df_cutout=calculator.load_data('semifield-cutouts.txt')
 
     # Calculate image counts and averages
     image_counts = calculator.calculate_image_counts(df_developed)
     average_image_counts = calculator.calculate_average_image_counts(image_counts)
+    average_batch_counts=calculator.calculate_average_batch_counts(df_developed)
+    
+
     calculator.plot_average_delevloped_stats(average_image_counts)
 
     #Compare file type lengths
     dataset_statistics_upload, uncolorized_batches=calculator.uncolorize(df_developed, df_upload)
     mismatch_statistics_cutout, unprocessed_batches_cutout=calculator.compare_cutout_blob(df_cutout)
     mismatch_statistics_developed, unprocessed_batches_developed=calculator.compute_matching(df_developed)
+
+    average_cutout_counts=calculator.calculate_average_cutout_counts(df_cutout, unprocessed_batches_cutout)
 
     #writing the mismatch statistics to a csv file for now
     calculator.save_data(mismatch_statistics_developed, unprocessed_batches_developed, ['mismatch_statistics_developed.csv','unprocessed_batches_developed.csv'])
