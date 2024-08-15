@@ -10,6 +10,7 @@ import shutil
 import re
 import matplotlib.pyplot as plt
 import seaborn as sns
+import datetime as DT
 
 log = logging.getLogger(__name__)
 
@@ -273,90 +274,6 @@ class CalculatorBlobMetrics:
         print(average_count)
         return cutout_counts
     
-    def plot_average_delevloped_stats(self, plot_data: pd.DataFrame) -> None:
-        """
-        Generate a bar plot showing the distribution of images by month, location, "season".
-        """
-        log.info("Generating bar plot for average number of images by season.")
-
-        unique_season_count = (
-            plot_data.groupby(["Season","State"])['AverageImageCount']
-            .sum()
-            .reset_index(name="season_count")
-        )
-        # Define state palette with new labels
-        state_palette = {
-            "MD": "#4C72B0",
-            "NC": "#55A868",
-            "TX": "#C44E52",
-        }
-        
-        with plt.style.context("ggplot"):
-            fig, ax = plt.subplots(figsize=(12, 6))
-            
-            bar_plot = sns.barplot(
-                data=unique_season_count,
-                x="Season",
-                y="season_count",
-                hue="State",
-                palette=state_palette,
-                hue_order=state_palette.keys(),
-                ax=ax,
-            )
-            
-            ax.set_xticks(ax.get_xticks())
-            ax.set_xticklabels(ax.get_xticklabels(), rotation=45)
-            ax.set_ylabel("Number of JPG Images")
-            ax.set_xlabel("Season")
-            ax.set_title(" Samples by Season")
-            ax.legend(title="States")
-            
-            # Add labels to each bar
-            for bar_container in bar_plot.containers:
-                ax.bar_label(bar_container, label_type='edge', padding=3, fontsize=7)
-
-            fig.tight_layout()
-            save_path = f"{self.output_dir}/unique_season_count.png"
-            fig.savefig(save_path, dpi=300)
-        
-
-        log.info("Generating bar plot for average number of images by month.")
-
-        unique_month_count = (
-            plot_data.groupby(["Month","State"])['AverageImageCount']
-            .sum()
-            .reset_index(name="month_count")
-        )
-        
-        # Plotting
-        with plt.style.context("ggplot"):
-            fig, ax = plt.subplots(figsize=(12, 6))
-            
-            bar_plot = sns.barplot(
-                data=unique_month_count,
-                x="Month",
-                y="month_count",
-                hue="State",
-                palette=state_palette,
-                hue_order=state_palette.keys(),
-                ax=ax,
-            )
-            
-            ax.set_xticks(ax.get_xticks())
-            ax.set_xticklabels(ax.get_xticklabels(), rotation=45)
-            ax.set_ylabel("Number of Samples")
-            ax.set_xlabel("Month")
-            ax.set_title(" Samples by Month")
-            ax.legend(title="States")
-            
-            # Add labels to each bar
-            for bar_container in bar_plot.containers:
-                ax.bar_label(bar_container, label_type='edge', padding=3, fontsize=7)
-
-            fig.tight_layout()
-            save_path = f"{self.output_dir}/unique_month_count.png"
-            fig.savefig(save_path, dpi=300)
-        log.info("Species distribution for current season plot saved.")
 
     def compute_matching(self,df: pd.DataFrame) -> tuple[pd.DataFrame, pd.DataFrame]:
         """Compares file type lengths.
@@ -447,7 +364,24 @@ class CalculatorBlobMetrics:
         unprocessed_df=grouped_df[~(grouped_df['count'] == 4)]
         return batch_df, unprocessed_df
     
-    def uncolorize(self, df_developed: pd.DataFrame, df_upload: pd.DataFrame) -> list[str]:
+    def uploads_recent_stats(self, df_upload: pd.DataFrame, uncolorized_batches:pd.DataFrame)-> tuple[pd.DataFrame, pd.DataFrame]:
+        """Identify the most recent colorized images and most recent uploaded raw images."""    
+        #get the date range for the last week
+        today = DT.date.today()
+        date_range = pd.date_range(today-DT.timedelta(days=21),today,freq='d').astype("string")
+        # Filter the DataFrame to include only batches that were uploaded in the date range
+        upload_recent_df=df_upload[df_upload['Batch'].str.contains('|'.join(date_range))]
+
+        #fileter out the uncolorized data from the upload dataframe
+        colorized_recent_df = df_upload.merge(uncolorized_batches, on=['Batch','ARWCount'], how="outer",indicator=True)
+        colorized_recent_df = colorized_recent_df[colorized_recent_df['_merge']=='left_only']
+        colorized_recent_df = colorized_recent_df.drop(['_merge'], axis=1)
+        # Filter the DataFrame to include only batches that were colorized in the date range
+        colorized_recent_df = colorized_recent_df[colorized_recent_df['Batch'].str.contains('|'.join(date_range))]
+
+        return upload_recent_df, colorized_recent_df
+
+    def compare_uploads_blob(self, df_developed: pd.DataFrame, df_upload: pd.DataFrame) -> tuple[pd.DataFrame, pd.DataFrame]:
         """Identify uncolorized images(they exist in semifield-uploads but not in semifield-developed-images).
         Args:
             df_developed: The DataFrame containing semifield-developed-images data.
@@ -465,7 +399,6 @@ class CalculatorBlobMetrics:
 
         #find the batches that are not in the developed images
         uncolorized_batches = [[x,df_upload_stat.loc[df_upload_stat["Batch"]==x,'ARWCount'].values[0]] for x in df_upload_stat.groupby(["Batch"]).groups.keys() if x not in df_developed.groupby(["Batch"]).groups.keys()]
-        import pdb; pdb.set_trace()
         uncolorized_batches= pd.DataFrame(uncolorized_batches, columns=['Batch','ARWCount'])
         
         
@@ -529,12 +462,11 @@ def main(cfg: DictConfig) -> None:
     image_counts = calculator.calculate_image_counts(df_developed)
     average_image_counts = calculator.calculate_average_image_counts(image_counts)
     average_batch_counts=calculator.calculate_average_batch_counts(df_developed)
-    
-
-    calculator.plot_average_delevloped_stats(average_image_counts)
 
     #Compare file type lengths
-    dataset_statistics_upload, uncolorized_batches=calculator.uncolorize(df_developed, df_upload)
+    dataset_statistics_upload, uncolorized_batches=calculator.compare_uploads_blob(df_developed, df_upload)
+    upload_recent_df, colorized_recent_df = calculator.uploads_recent_stats(dataset_statistics_upload, uncolorized_batches)
+
     mismatch_statistics_cutout, unprocessed_batches_cutout=calculator.compare_cutout_blob(df_cutout)
     mismatch_statistics_developed, unprocessed_batches_developed=calculator.compute_matching(df_developed)
 
@@ -544,5 +476,7 @@ def main(cfg: DictConfig) -> None:
     calculator.save_data(mismatch_statistics_developed, unprocessed_batches_developed, ['mismatch_statistics_developed.csv','unprocessed_batches_developed.csv'])
     calculator.save_data(mismatch_statistics_cutout, unprocessed_batches_cutout, ['mismatch_statistics_cutout.csv','unprocessed_batches_cutout.csv'])
     calculator.save_data(dataset_statistics_upload, uncolorized_batches, ['dataset_statistics_upload.csv','uncolorized_batches.csv'])
+    calculator.save_data(upload_recent_df, colorized_recent_df, ['upload_recent_df.csv','colorized_recent_df.csv'])
+    calculator.save_data(average_image_counts, average_batch_counts, ['average_image_counts.csv','average_batch_counts.csv'])
     
     log.info(f"{cfg.task} completed.")
