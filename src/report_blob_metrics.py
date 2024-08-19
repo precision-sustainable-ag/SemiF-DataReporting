@@ -41,12 +41,23 @@ class ReporterBlobMetrics:
         self.pdf.add_page()
         self.pdf.set_font("Arial", size=12)
         ##################### ADD images to the PDF #####################
-        self.pdf.cell(200, 10, txt="Average Crop Counts for each Season", ln=True, align='C')
+        self.pdf.cell(200, 10, txt="Average Crop Counts for Each Season", ln=True, align='C')
         image=Path(self.output_dir, 'average_season_count.png')
         self.pdf.image(image, x=5, y=25, w=190, h=125)
+
         self.pdf.add_page()
-        self.pdf.cell(200, 10, txt="Average Crop Counts for each Month", ln=True, align='C')
+        self.pdf.cell(200, 10, txt="Average Crop Counts for Each Month", ln=True, align='C')
         image=Path(self.output_dir, 'average_month_count.png')
+        self.pdf.image(image, x=5, y=25, w=190, h=125)
+
+        self.pdf.add_page()
+        self.pdf.cell(200, 10, txt="Average Batch Counts for Each Month", ln=True, align='C')
+        image=Path(self.output_dir, 'average_batch_count.png')
+        self.pdf.image(image, x=5, y=25, w=190, h=125)
+
+        self.pdf.add_page()
+        self.pdf.cell(200, 10, txt="Average Cut out Counts for Each Month", ln=True, align='C')
+        image=Path(self.output_dir, 'average_cut_out_count.png')
         self.pdf.image(image, x=5, y=25, w=190, h=125)
         ##################### ADD tables to the PDF #####################
         line_height = self.pdf.font_size

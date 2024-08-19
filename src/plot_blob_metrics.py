@@ -144,24 +144,23 @@ class PlotBlobMetrics:
 
         log.info("Species distribution for current season plot saved.")
 
-    def plot_delveloped_stats(self, plot_data:pd.DataFrame)->None:
+    def plot_average_batch_counts(self, plot_data:pd.DataFrame)->None:
         """
-        Generate a bar plot showing the distribution of images by month, location, "season".
+        Generate a bar plot showing the distribution of batches by month.
         """
-        log.info("Generating bar plot for average number of images by season.")
-
-        season_data=plot_data.groupby(['State', 'Season'])['ImageCount'].mean().reset_index(name='AverageImageCount')
-
-        unique_season_count = (
-            season_data.groupby(["Season","State"])['AverageImageCount']
-            .sum()
-            .reset_index(name="season_count")
-        )
+        log.info("Generating bar plot for average number of batches by month.")
         
         
-        self.basic_line_plot(unique_season_count, "Season", "season_count", " Samples by Season", "Season", "Number of JPG Images", "average_season_count.png")
+        self.basic_line_plot(plot_data, "Month", "BatchCount", " Batches by Month", "Month", "Number of Batches", "average_batch_count.png")
 
+    def plot_average_cut_out_counts(self, plot_data:pd.DataFrame)->None:
+        """
+        Generate a bar plot showing the distribution of cut outs by month.
+        """
+        log.info("Generating bar plot for average number of cut outs by month.")
         
+        
+        self.basic_line_plot(plot_data, "Month", "AverageMonthlyCutoutCount", " Cut Outs by Month", "Month", "Number of Cut Outs", "average_cut_out_count.png")
 
     def load_data(self, data_file: Path) -> pd.DataFrame:
         """Loads the data from the given path.
@@ -179,17 +178,6 @@ class PlotBlobMetrics:
 
         return df
     
-    def save_data(self, df_stat: pd.DataFrame, df_unprocess: pd.DataFrame, file_names: list) -> None:
-        """Saves the data to the given path.
-        Args:
-            df: The DataFrame containing the data.
-            file_name: Names of the files to save the data.
-            """
-        save_csv_dir = Path(self.output_dir, "blob_containers")
-        save_csv_dir.mkdir(exist_ok=True, parents=True)
-        df_stat.to_csv(Path(save_csv_dir, file_names[0]), sep=',', encoding='utf-8', index=False, header=True)
-        df_unprocess.to_csv(Path(save_csv_dir, file_names[1]), sep=',', encoding='utf-8', index=False, header=True)
-        return None
 
 def main(cfg: DictConfig) -> None:
     """Main function to execute the BlobMetricPlotter."""
@@ -215,7 +203,15 @@ def main(cfg: DictConfig) -> None:
     season_image_counts=plotter.load_data('blob_containers/season_image_counts.csv')
     average_batch_counts=plotter.load_data('blob_containers/average_batch_counts.csv')
 
+    average_cropout_counts=plotter.load_data('blob_containers/average_cutout_counts.csv')
+
+    #plot average season and month image counts
     plotter.plot_average_delevloped_stats(season_image_counts)
+    #plot average batch counts
+    plotter.plot_average_batch_counts(average_batch_counts)
+    #plot average cut out counts
+    plotter.plot_average_cut_out_counts(average_cropout_counts)
+
 
 
     
