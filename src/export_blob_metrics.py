@@ -75,6 +75,7 @@ class CalculatorBlobMetrics:
         self.report_dir = cfg.paths.report
         self.matching_folders = cfg.matching_folders
         self.valid_pattern = r'^[A-Z]{2}_\d{4}-\d{2}-\d{2}$'
+        self.seasons= cfg.date_ranges.date_ranges
         log.info("Initialized Exporting BlobMetrics with configuration data.")
 
     def extract_batches(self, lines: list[str], txt_name:str) -> list[tuple[str, str]]:
@@ -145,16 +146,6 @@ class CalculatorBlobMetrics:
             column_name: The name of the column containing the batch names.
         Returns:
             The filtered DataFrame."""
-        
-        # if extra_patterns:
-        #     valid_pattern = r'^[A-Z]{2}_\d{4}-\d{2}-\d{2}'
-        #     regexp = re.compile(valid_pattern)
-            
-        #     filtered_df[column_name]=df[column_name].map(lambda x: x.replace("_mask", "") if regexp.search(x) else x)
-            
-        #     filtered_df = df[df[column_name].str.contains(valid_pattern, regex=True)]
-        #     filtered_df = df[df[column_name].str.contains(valid_pattern, regex=True)]
-        # else:
             
         invalid_batches = df[~df[column_name].str.contains(self.valid_pattern, regex=True)][column_name].unique()        
         filtered_df = df[df[column_name].str.contains(self.valid_pattern, regex=True)]
@@ -222,22 +213,31 @@ class CalculatorBlobMetrics:
         log.info(f"Calculated image counts for {len(image_counts)} batches.")
         return image_counts
 
-    def calculate_average_image_counts(self,image_counts: pd.DataFrame) -> pd.DataFrame:
-        """Calculates the average image counts grouped by state and month.
+    def calculate_season_image_counts(self,image_counts: pd.DataFrame) -> pd.DataFrame:
+        """Calculates the season image counts grouped by season and month for each state.
         Args:
             image_counts: The DataFrame containing the image counts.
         Returns:
-            The DataFrame containing the average image counts."""
+            The DataFrame containing the seasonal image counts."""
 
-        average_image_counts = image_counts.groupby(['State', 'Month'])['ImageCount'].mean().reset_index(name='AverageImageCount')
-        
-        seasons={'summer_season':['04','05', '06','07','08'], 'cool_season_1':['09','10','11','12'], 'cool_season_2':['01','02','03']}
-        
-        average_image_counts['Season']=average_image_counts['Month'].map(lambda x: 'summer_season_'+x[2:4] if x[5:7] in seasons['summer_season'] else ('cool_season_'+x[2:4]+'_'+str(int(x[2:4])+1) if x[5:7] in seasons['cool_season_1'] else 'cool_season_'+str(int(x[2:4])-1)+'_'+x[2:4]))
+        today = DT.date.today()
+        #create a dataframe with the date ranges from the config
+        datarange=pd.DataFrame([[i,j,self.seasons[i][j]['start'],self.seasons[i][j]['end']]
+                           if self.seasons[i][j]['end'] !=''  else [i,j,self.seasons[i][j]['start'],str(today)] for i in self.seasons.keys() 
+                           for j in self.seasons[i].keys()],
+                           columns=['State','Season','Start','End'])
+        datarange['Start']=pd.to_datetime(datarange['Start'])
+        datarange['End']=pd.to_datetime(datarange['End'])
 
-        print('average image counts')
-        log.info(f"Calculated average image counts for {len(average_image_counts)} state-month groups.")
-        return average_image_counts
+        #convert the batch date to datetime
+        image_counts['Date']=image_counts['Batch'].str.split('_').str[1]
+        image_counts['Date']=pd.to_datetime(image_counts['Date'])
+        #create a column for the season by comparing dates and states
+        for st in datarange.iterrows():
+            image_counts.loc[(image_counts['State']==st[1]['State']) & (image_counts['Date']<=st[1]['End']) & (image_counts['Date']>st[1]['Start']),'Season']=st[1]['Season']
+
+        log.info(f"Calculated season image counts for {len(image_counts)} dataframe.")
+        return image_counts.sort_values(by=['Date'])
     
     def calculate_average_batch_counts(self, df: pd.DataFrame) -> pd.DataFrame:
         """Calculates the blob statistics for semifield-developed-images.
@@ -248,8 +248,7 @@ class CalculatorBlobMetrics:
             """
         
         batch_counts = df.groupby(['State', 'Month'])['Batch'].nunique().reset_index(name='BatchCount')
-        print('batch counts')
-        print(batch_counts)
+        log.info(f"Calculated batch counts for {len(batch_counts)} batches.")
         return batch_counts
     
     def calculate_average_cutout_counts(self, df: pd.DataFrame, unprocessed_df: pd.DataFrame) -> pd.DataFrame:
@@ -460,7 +459,7 @@ def main(cfg: DictConfig) -> None:
 
     # Calculate image counts and averages
     image_counts = calculator.calculate_image_counts(df_developed)
-    average_image_counts = calculator.calculate_average_image_counts(image_counts)
+    season_image_counts = calculator.calculate_season_image_counts(image_counts)
     average_batch_counts=calculator.calculate_average_batch_counts(df_developed)
 
     #Compare file type lengths
@@ -477,6 +476,6 @@ def main(cfg: DictConfig) -> None:
     calculator.save_data(mismatch_statistics_cutout, unprocessed_batches_cutout, ['mismatch_statistics_cutout.csv','unprocessed_batches_cutout.csv'])
     calculator.save_data(dataset_statistics_upload, uncolorized_batches, ['dataset_statistics_upload.csv','uncolorized_batches.csv'])
     calculator.save_data(upload_recent_df, colorized_recent_df, ['upload_recent_df.csv','colorized_recent_df.csv'])
-    calculator.save_data(average_image_counts, average_batch_counts, ['average_image_counts.csv','average_batch_counts.csv'])
+    calculator.save_data(season_image_counts, average_batch_counts, ['season_image_counts.csv','average_batch_counts.csv'])
     
     log.info(f"{cfg.task} completed.")
