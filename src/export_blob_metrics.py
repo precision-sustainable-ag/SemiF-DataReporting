@@ -264,10 +264,10 @@ class CalculatorBlobMetrics:
         df['FileName']=df['FileName'].map(lambda x: x.replace("_mask", "") if 'mask' in x else x)
         cutout_counts=df[~df['FileName'].isin(unprocessed_df['FileName'])]
 
-        cutout_counts=cutout_counts.groupby(['Month', 'Batch', 'FolderName']).size().div(4).reset_index(name='CutoutCount')
+        cutout_counts=cutout_counts.groupby(['Month','State', 'Batch', 'FolderName']).size().div(4).reset_index(name='CutoutCount')
 
         #chacking for the average cutout count per image per month
-        average_count=cutout_counts.groupby(['Month'])['CutoutCount'].mean().reset_index(name='AverageMonthlyCutoutCount')
+        average_count=cutout_counts.groupby(['Month','State'])['CutoutCount'].mean().reset_index(name='AverageMonthlyCutoutCount')
 
         return cutout_counts, average_count
     
