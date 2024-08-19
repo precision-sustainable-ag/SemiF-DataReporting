@@ -265,13 +265,11 @@ class CalculatorBlobMetrics:
         cutout_counts=df[~df['FileName'].isin(unprocessed_df['FileName'])]
 
         cutout_counts=cutout_counts.groupby(['Month', 'Batch', 'FolderName']).size().div(4).reset_index(name='CutoutCount')
-        print('cutout counts')
-        print(cutout_counts)
+
         #chacking for the average cutout count per image per month
         average_count=cutout_counts.groupby(['Month'])['CutoutCount'].mean().reset_index(name='AverageMonthlyCutoutCount')
-        print('monthly average cutout counts')
-        print(average_count)
-        return cutout_counts
+
+        return cutout_counts, average_count
     
 
     def compute_matching(self,df: pd.DataFrame) -> tuple[pd.DataFrame, pd.DataFrame]:
@@ -469,7 +467,7 @@ def main(cfg: DictConfig) -> None:
     mismatch_statistics_cutout, unprocessed_batches_cutout=calculator.compare_cutout_blob(df_cutout)
     mismatch_statistics_developed, unprocessed_batches_developed=calculator.compute_matching(df_developed)
 
-    average_cutout_counts=calculator.calculate_average_cutout_counts(df_cutout, unprocessed_batches_cutout)
+    cutout_counts,average_cutout_counts=calculator.calculate_average_cutout_counts(df_cutout, unprocessed_batches_cutout)
 
     #writing the mismatch statistics to a csv file for now
     calculator.save_data(mismatch_statistics_developed, unprocessed_batches_developed, ['mismatch_statistics_developed.csv','unprocessed_batches_developed.csv'])
@@ -477,5 +475,6 @@ def main(cfg: DictConfig) -> None:
     calculator.save_data(dataset_statistics_upload, uncolorized_batches, ['dataset_statistics_upload.csv','uncolorized_batches.csv'])
     calculator.save_data(upload_recent_df, colorized_recent_df, ['upload_recent_df.csv','colorized_recent_df.csv'])
     calculator.save_data(season_image_counts, average_batch_counts, ['season_image_counts.csv','average_batch_counts.csv'])
+    calculator.save_data(cutout_counts, average_cutout_counts, ['cutout_counts.csv','average_cutout_counts.csv'])
     
     log.info(f"{cfg.task} completed.")
