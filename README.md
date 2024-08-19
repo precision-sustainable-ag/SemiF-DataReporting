@@ -63,8 +63,24 @@ With the environment set up and activated, you can run the scripts provided in t
 
 1. Text Files: The ExporterBlobMetrics class saves blob lists as text files. The text files are saved in the directory specified by `cfg.paths.data_dir` in the configuration file, with the nameing format `<blob_container_name>.txt`.
 
-2. CSV Report: The CalculatorBlobMetrics class generates a CSV file containing mismatch statistics, detailing any discrepancies found during analysis. The CSV files are saved in the directory specified by `cfg.paths.data_dir` in the configuration file, with the nameing format `mismatch_statistics_record.csv`.
+2. CSV Report: The CalculatorBlobMetrics class generates a CSV file containing mismatch statistics, detailing any discrepancies found during analysis. The CSV files are saved in the directory specified by `cfg.paths.data_dir` in the configuration file.
  
+### `plot_blob_metrics.py`
+
+1. PlotBlobMetrics : This class is designed to visualize blob metrics by generating various plots such as bar charts and line charts, using data loaded from CSV files.
+
+### Usage
+
+1. Run the script with the configuration file as an argument:
+
+    ```bash
+    python main.py task=plot_blob_metrics
+    ```
+
+### Output
+
+1. Plots: The script generates and saves various plots for reporting. The plots are saved as PNG files in the directory specified by `cfg.paths.data_dir`.
+
 ### `report_blob_metrics.py`
 
 1. ReporterBlobMetrics: Generates PDF reports from blob metrics stored in CSV files and saves the reports.
@@ -79,4 +95,4 @@ With the environment set up and activated, you can run the scripts provided in t
 
 ### Output
 
-1. PDF Report: The ReporterBlobMetrics class generates a PDF report containing the blob metrics. The PDF file is saved in the directory specified by `cfg.paths.report` in the configuration file, with the naming format `semifield-developed-images_image_counts_and_averages_report.pdf`.
+1. PDF Report: The ReporterBlobMetrics class generates a PDF report containing the blob metrics. The PDF file is saved in the directory specified by `cfg.paths.report` in the configuration file, with the naming format `semifield_report.pdf`.
