@@ -4,6 +4,7 @@ from fpdf import FPDF
 from omegaconf import DictConfig
 from pathlib import Path
 import csv
+import os
 
 log = logging.getLogger(__name__)
 
@@ -21,75 +22,102 @@ class ReporterBlobMetrics:
         Arguments:
         report_dir: The directory where the report will be saved.
         output_dir: The directory where the output data is saved.
+        blob_containers: A boolean indicating whether the data is from blob containers.
+        pdf: The FPDF object used to generate the PDF report.
         """
         self.report_dir = cfg.paths.report
         self.output_dir = cfg.paths.data_dir
+        self.blob_containers = 0#cfg.report.blob_containers
+        self.pdf = FPDF()
         log.info("Initialized ReporterBlobMetrics with configuration data.")
 
-    def generate_pdf_report(self, result_df: pd.DataFrame, output_path: Path) -> None:
+    def generate_pdf_report(self, result_df_list: dict[pd.DataFrame], output_path: Path) -> None:
         """ Generates a PDF report with the given data and saves it to the output path.
         args:
             result_df: The data to be included in the report.
             output_path: The path where the report will be saved.
         """
-        pdf = FPDF()
-        pdf.add_page()
-        pdf.set_font("Arial", size=12)
-        # pdf.cell(200, 10, txt="Image Counts and Averages Report", ln=True, align='C')
-        # for index, row in result_df.iterrows():
-        #     pdf.cell(200, 5, txt=f"{row['Batch']}", ln=True)
-        #     pdf.cell(200, 5, txt=f"Image Count: {row['ImageCount']}", ln=True)
-        #     pdf.cell(200, 5, txt=f"Average Image Count: {row['AverageImageCount']:.2f}", ln=True)
-        #     pdf.ln(10)
 
-        pdf.add_page()
-        pdf.set_font("Times", size=10)
-        line_height = pdf.font_size
-        col_width = pdf.epw /12
+        self.pdf.add_page()
+        self.pdf.set_font("Arial", size=12)
+        ##################### ADD images to the PDF #####################
+        self.pdf.cell(200, 10, txt="Average Crop Counts for each Season", ln=True, align='C')
+        image=Path(self.output_dir, 'average_season_count.png')
+        self.pdf.image(image, x=5, y=25, w=190, h=125)
+        self.pdf.add_page()
+        self.pdf.cell(200, 10, txt="Average Crop Counts for each Month", ln=True, align='C')
+        image=Path(self.output_dir, 'average_month_count.png')
+        self.pdf.image(image, x=5, y=25, w=190, h=125)
+        ##################### ADD tables to the PDF #####################
+        line_height = self.pdf.font_size
+        self.pdf.set_font("Times", size=10)
+        for df_name in result_df_list:
 
-        #one liner for removing lengthy lists in the last cell to first three files.
-        result_df = result_df.map(lambda y: y[:3]+['...',] if isinstance(y, list) and len(y)>3 else y )
-        
-        logging.info(f"Creating the batch statistics report.")
-        #create your fpdf table ..
-        for j,row in result_df.iterrows():
+            self.pdf.add_page()
+            
+            df = result_df_list[df_name]
+
+            col_width = self.pdf.epw /(len(df.columns)+3)
+            
+            self.pdf.cell(200, 10, txt=df_name, ln=True, align='C') 
+            
+            #one liner for removing lengthy lists in the last cell to first three files.
+            df = df.map(lambda y: y[:3]+['...',] if isinstance(y, list) and len(y)>3 else y )
+            
+            logging.info(f"Creating the batch statistics report.")
+            #create your fpdf table ..
+
             #add the column names
-            if j==0:
-                for header in result_df.columns:
-                    pdf.cell(col_width, line_height, str(header), border=1)
-                pdf.ln(line_height)
-            #choose right height for current row
-            if len(row['Missing'])>1:
-                line_height=pdf.font_size*(len(row['Missing']))
-            else:
-                line_height=pdf.font_size
-            #draw each cell in the row
-            for i,datum in enumerate(row):                    
-                if i== 8:
-                    pdf.multi_cell(col_width*3, line_height, str(datum), border=1,align='L',ln=3, 
-                max_line_height=pdf.font_size)
-                elif i==0:
-                    pdf.multi_cell(col_width*2, line_height, str(datum), border=1,align='L',ln=3, max_line_height=pdf.font_size)
+            self.pdf_row(df.columns, col_width, line_height)
+            self.pdf.ln(line_height)
+            for j,row in df.iterrows():            
+                #choose right height for current row
+                if 'Missing' in row and len(row['Missing'])>4:
+                    line_height=self.pdf.font_size*3
                 else:
-                    pdf.multi_cell(col_width, line_height, str(datum), border=1,align='L',ln=3, max_line_height=pdf.font_size)
-                
-            pdf.ln(line_height)
+                    line_height=self.pdf.font_size
+                #draw each cell in the row
 
-        pdf.output(output_path)
+                self.pdf_row(row, col_width, line_height)
+   
+                self.pdf.ln(line_height)
+            
+
+        self.pdf.output(output_path)
         log.info(f"PDF report generated and saved to {output_path}.")
+    
+    def pdf_row(self, row: pd.Series, col_width: float, line_height: float) -> None:
+        for i,datum in enumerate(row):                    
+            if i== 8:
+                self.pdf.multi_cell(col_width*3, line_height, str(datum), border=1,align='L',ln=3, 
+            max_line_height=self.pdf.font_size)
+            elif i==0:
+                self.pdf.multi_cell(col_width*2, line_height, str(datum), border=1,align='L',ln=3, max_line_height=self.pdf.font_size)
+            else:
+                self.pdf.multi_cell(col_width, line_height, str(datum), border=1,align='L',ln=3, max_line_height=self.pdf.font_size)
+    
+    def save_pdf(self) -> None:
+        """Conect csv to a PDF report.
+        """
+        save_csv_dir = Path(self.output_dir, 'blob_containers')
+        all_stats={}
+        if self.blob_containers:
+            for container in os.scandir(save_csv_dir):
+                
+                # Read the CSV file
+                mismatch_statistics = pd.read_csv(Path(save_csv_dir, container.name))
+                all_stats[container.name.split('.')[0]]=mismatch_statistics
+        
+        # result_df = reporter.combine_data(image_counts, average_image_counts)
+        output_path = Path(self.report_dir,'semifield_report.pdf')
+        self.generate_pdf_report(all_stats, output_path)
+
 
 def main(cfg: DictConfig) -> None:
     """Main function to execute the BlobMetricReporter."""
     log.info(f"Starting {cfg.task}")
     reporter = ReporterBlobMetrics(cfg)
-
-    # Read the CSV file
-    mismatch_statistics = pd.read_csv(Path(reporter.report_dir, 'mismatch_statistics_record.csv'))
-
-    # result_df = reporter.combine_data(image_counts, average_image_counts)
-    output_path = Path(reporter.report_dir,'semifield-developed-images_image_counts_and_averages_report.pdf')
-    
-    reporter.generate_pdf_report(mismatch_statistics, output_path)
+    reporter.save_pdf()
 
     log.info(f"{cfg.task} completed.")
 
