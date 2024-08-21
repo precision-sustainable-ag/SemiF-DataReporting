@@ -272,7 +272,7 @@ class CalculatorBlobMetrics:
         return cutout_counts, average_count
     
 
-    def compute_matching(self,df: pd.DataFrame) -> tuple[pd.DataFrame, pd.DataFrame]:
+    def compare_developed_blob(self,df: pd.DataFrame) -> tuple[pd.DataFrame, pd.DataFrame]:
         """Compares file type lengths.
         Args:
             df: The DataFrame containing the batch data.
@@ -389,9 +389,8 @@ class CalculatorBlobMetrics:
         #filter the data to only include ARW files and JPG files
         df_upload=df_upload[df_upload['FileType']=='ARW']
         df_developed=df_developed[(df_developed['FileType']=='jpg') & (df_developed['FolderName']=='images')]
-
         #group the data by batch and count the number of images
-        df_upload_stat=df_upload.groupby(["Batch"]).size().reset_index(name='ARWCount')
+        df_upload_stat=df_upload.groupby(["Batch",'State','Month']).size().reset_index(name='ARWCount')
         
 
         #find the batches that are not in the developed images
@@ -465,7 +464,7 @@ def main(cfg: DictConfig) -> None:
     upload_recent_df, colorized_recent_df = calculator.uploads_recent_stats(dataset_statistics_upload, uncolorized_batches)
 
     mismatch_statistics_cutout, unprocessed_batches_cutout=calculator.compare_cutout_blob(df_cutout)
-    mismatch_statistics_developed, unprocessed_batches_developed=calculator.compute_matching(df_developed)
+    mismatch_statistics_developed, unprocessed_batches_developed=calculator.compare_developed_blob(df_developed)
 
     cutout_counts,average_cutout_counts=calculator.calculate_average_cutout_counts(df_cutout, unprocessed_batches_cutout)
 
