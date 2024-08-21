@@ -27,7 +27,7 @@ class ReporterBlobMetrics:
         """
         self.report_dir = cfg.paths.report
         self.output_dir = cfg.paths.data_dir
-        self.blob_containers = 0#cfg.report.blob_containers
+        self.blob_containers = 1#cfg.report.blob_containers
         self.pdf = FPDF()
         log.info("Initialized ReporterBlobMetrics with configuration data.")
 
@@ -59,6 +59,20 @@ class ReporterBlobMetrics:
         self.pdf.cell(200, 10, txt="Average Cut out Counts for Each Month", ln=True, align='C')
         image=Path(self.output_dir, 'average_cut_out_count.png')
         self.pdf.image(image, x=5, y=25, w=190, h=125)
+
+        self.pdf.add_page()
+        self.pdf.cell(200, 10, txt="Total ARW Counts for Each Month", ln=True, align='C')
+        image=Path(self.output_dir, 'dataset_statistics_upload.png')
+        self.pdf.image(image, x=5, y=25, w=190, h=125)
+        ##################### ADD lists to the PDF #####################
+        self.pdf.add_page()
+        #adding uncolorized batch names
+        self.pdf.cell(200, 10, txt="Uncolorized batches", ln=True, align='C')
+        for i in set(result_df_list['uncolorized_batches']['State'].values):
+            self.pdf.cell(200, 10, txt=str(i), ln=True, align='C')
+            st_list =  result_df_list['uncolorized_batches'][result_df_list['uncolorized_batches']['State']==i]['Batch'].to_list()
+            self.pdf.cell(100, 10, txt=str(st_list)[1:-1], ln=True, align='C')
+
         ##################### ADD tables to the PDF #####################
         line_height = self.pdf.font_size
         self.pdf.set_font("Times", size=10)
@@ -98,12 +112,15 @@ class ReporterBlobMetrics:
         log.info(f"PDF report generated and saved to {output_path}.")
     
     def pdf_row(self, row: pd.Series, col_width: float, line_height: float) -> None:
-        for i,datum in enumerate(row):                    
+        for i,datum in enumerate(row):   
+            #for larger size text (missing file names)                 
             if i== 8:
                 self.pdf.multi_cell(col_width*3, line_height, str(datum), border=1,align='L',ln=3, 
             max_line_height=self.pdf.font_size)
+            #for batch names
             elif i==0:
                 self.pdf.multi_cell(col_width*2, line_height, str(datum), border=1,align='L',ln=3, max_line_height=self.pdf.font_size)
+            #for numbers
             else:
                 self.pdf.multi_cell(col_width, line_height, str(datum), border=1,align='L',ln=3, max_line_height=self.pdf.font_size)
     
@@ -114,10 +131,13 @@ class ReporterBlobMetrics:
         all_stats={}
         if self.blob_containers:
             for container in os.scandir(save_csv_dir):
-                
-                # Read the CSV file
-                mismatch_statistics = pd.read_csv(Path(save_csv_dir, container.name))
-                all_stats[container.name.split('.')[0]]=mismatch_statistics
+                try:
+                    # Read the CSV file
+                    mismatch_statistics = pd.read_csv(Path(save_csv_dir, container.name))
+                    all_stats[container.name.split('.')[0]]=mismatch_statistics
+                except Exception as e:
+                    log.error(f"Error reading CSV file: {container.name}")
+                    continue
         
         # result_df = reporter.combine_data(image_counts, average_image_counts)
         output_path = Path(self.report_dir,'semifield_report.pdf')

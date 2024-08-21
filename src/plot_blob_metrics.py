@@ -160,7 +160,39 @@ class PlotBlobMetrics:
         log.info("Generating bar plot for average number of cut outs by month.")
         
         
-        self.basic_line_plot(plot_data, "Month", "AverageMonthlyCutoutCount", " Cut Outs by Month", "Month", "Number of Cut Outs", "average_cut_out_count.png")
+        self.basic_line_plot(plot_data, "Month", "AverageMonthlyCutoutCount", " CutOuts by Month", "Month", "Number of CutOuts", "average_cut_out_count.png")
+    
+    def plot_dataset_statistics_upload(self, plot_data:pd.DataFrame)->None:
+        """
+        Generate a bar plot showing the distribution of dataset statistics by upload.
+        """
+
+        arw_month_count = (
+            plot_data.groupby(["Month","State"])['ARWCount']
+            .sum()
+            .reset_index(name="month_count")
+        )
+
+        log.info("Generating bar plot for dataset statistics by upload.")
+        
+        self.basic_line_plot(arw_month_count, "Month", "month_count", " Dataset Statistics by Upload", "State", "Number of ARW files", "dataset_statistics_upload.png")
+
+    def plot_recent_uploads(self, plot_data:pd.DataFrame)->None:
+        """
+        Generate a bar plot showing the distribution of recent uploads.
+        """
+        log.info("Generating bar plot for recent uploads.")
+        
+        self.basic_line_plot(plot_data, "Month", "BatchCount", " Recent Uploads", "Month", "Number of Batches", "upload_recent.png")
+
+    def plot_recent_colorized(self, plot_data:pd.DataFrame)->None:
+        """
+        Generate a bar plot showing the distribution of colorized images.
+        """
+        log.info("Generating bar plot for colorized images.")
+        
+        self.basic_line_plot(plot_data, "Month", "BatchCount", " Colorized Images", "Month", "Number of Batches", "colorized_images.png")
+
 
     def load_data(self, data_file: Path) -> pd.DataFrame:
         """Loads the data from the given path.
@@ -212,6 +244,12 @@ def main(cfg: DictConfig) -> None:
     #plot average cut out counts
     plotter.plot_average_cut_out_counts(average_cropout_counts)
 
+    #plot dataset statistics uploads
+    plotter.plot_dataset_statistics_upload(dataset_statistics_upload)
+
+
+    #plot recent uploads and colorized images
+    #would only make sense with the spicies data available
 
 
     
