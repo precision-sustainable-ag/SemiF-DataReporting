@@ -394,8 +394,9 @@ class CalculatorBlobMetrics:
         
 
         #find the batches that are not in the developed images
-        uncolorized_batches = [[x,df_upload_stat.loc[df_upload_stat["Batch"]==x,'ARWCount'].values[0]] for x in df_upload_stat.groupby(["Batch"]).groups.keys() if x not in df_developed.groupby(["Batch"]).groups.keys()]
-        uncolorized_batches= pd.DataFrame(uncolorized_batches, columns=['Batch','ARWCount'])
+        uncolorized_batches = [[x, df_upload_stat.loc[df_upload_stat["Batch"]==x,'State'].values[0], df_upload_stat.loc[df_upload_stat["Batch"]==x,'ARWCount'].values[0]] for x in df_upload_stat.groupby(["Batch"]).groups.keys() if x not in df_developed.groupby(["Batch"]).groups.keys()]
+
+        uncolorized_batches= pd.DataFrame(uncolorized_batches, columns=['Batch', 'State','ARWCount'])
         
         
         log.info(f"Found {len(uncolorized_batches)} batches with uncolorized images.")
