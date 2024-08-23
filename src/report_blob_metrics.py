@@ -35,10 +35,10 @@ class ReporterBlobMetrics:
         """Generates the image for the PDF report.
         """
         self.pdf.add_page()
-        self.pdf.cell(200, 10, txt=txt, ln=True, align='C')
         image=Path(self.output_dir, file_path)
-        self.pdf.image(image, x=5, y=25, w=190, h=125)
-        self.pdf.cell(10, 200, txt=f'Please select {csv_path} more information', ln=True, align='L')
+        self.pdf.image(image, w=190, h=125)
+        self.pdf.ln(10)
+        self.pdf.cell(10, 10, txt=f'Please select {csv_path} more information', ln=True, align='L')
 
     def generate_pdf_report(self, result_df_list: dict[pd.DataFrame], output_path: Path) -> None:
         """ Generates a PDF report with the given data and saves it to the output path.
@@ -50,32 +50,16 @@ class ReporterBlobMetrics:
         
         self.pdf.set_font("Arial", size=12)
         ##################### ADD images to the PDF #####################
-        self.pdf.add_page()
-        self.pdf.cell(200, 10, txt="Average Crop Counts for Each Season", ln=True, align='C')
-        image=Path(self.output_dir, 'average_season_count.png')
-        self.pdf.image(image, x=5, y=25, w=190, h=125)
-        self.pdf.cell(500, 500, txt='Please select data/blob_containers/season_image_counts.csv more information', ln=True, align='L')
-        # self.generate_image(self, txt="Average Crop Counts for Each Season", file_path='average_season_count.png', csv_path='data/blob_containers/season_image_counts.csv')
 
-        self.pdf.add_page()
-        self.pdf.cell(200, 10, txt="Average Crop Counts for Each Month", ln=True, align='C')
-        image=Path(self.output_dir, 'average_month_count.png')
-        self.pdf.image(image, x=5, y=25, w=190, h=125)
+        self.generate_image(txt="Average Crop Counts for Each Season", file_path='average_season_count.png', csv_path='data/blob_containers/season_image_counts.csv')
 
-        self.pdf.add_page()
-        self.pdf.cell(200, 10, txt="Average Batch Counts for Each Month", ln=True, align='C')
-        image=Path(self.output_dir, 'average_batch_count.png')
-        self.pdf.image(image, x=5, y=25, w=190, h=125)
+        self.generate_image(txt="Average Crop Counts for Each Month", file_path='average_month_count.png', csv_path='data/blob_containers/season_image_counts.csv')
 
-        self.pdf.add_page()
-        self.pdf.cell(200, 10, txt="Average Cut out Counts for Each Month", ln=True, align='C')
-        image=Path(self.output_dir, 'average_cut_out_count.png')
-        self.pdf.image(image, x=5, y=25, w=190, h=125)
+        self.generate_image(txt="Average Batch Counts for Each Month", file_path='average_batch_count.png', csv_path='data/blob_containers/average_batch_counts.csv')
 
-        self.pdf.add_page()
-        self.pdf.cell(200, 10, txt="Total ARW Counts for Each Month", ln=True, align='C')
-        image=Path(self.output_dir, 'dataset_statistics_upload.png')
-        self.pdf.image(image, x=5, y=25, w=190, h=125)
+        self.generate_image(txt="Average Cut out Counts for Each Month", file_path='average_cut_out_count.png', csv_path='data/blob_containers/average_cutout_counts.csv')
+
+        self.generate_image(txt="Total ARW Counts for Each Month", file_path='dataset_statistics_upload.png', csv_path='data/blob_containers/dataset_statistics_upload.csv')
         ##################### ADD lists to the PDF #####################
         self.pdf.add_page()
         #adding uncolorized batch names
@@ -127,8 +111,8 @@ class ReporterBlobMetrics:
     #             self.pdf.ln(line_height)
             
 
-    #     self.pdf.output(output_path)
-    #     log.info(f"PDF report generated and saved to {output_path}.")
+        self.pdf.output(output_path)
+        log.info(f"PDF report generated and saved to {output_path}.")
     
     # def pdf_row(self, row: pd.Series, col_width: float, line_height: float) -> None:
     #     for i,datum in enumerate(row):   
