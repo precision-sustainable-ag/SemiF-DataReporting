@@ -193,6 +193,14 @@ class PlotBlobMetrics:
         
         self.basic_line_plot(plot_data, "Month", "BatchCount", " Colorized Images", "Month", "Number of Batches", "colorized_images.png")
 
+    def plot_uncolorized_batches(self, plot_data:pd.DataFrame)->None:
+        """
+        Generate a bar plot showing the distribution of uncolorized batches.
+        """
+        log.info("Generating bar plot for uncolorized batches.")
+
+        self.basic_line_plot(plot_data, "Batch", "ARWCount", " Uncolorized Batches", "Batch", "Number of ARW files", "uncolorized_batches.png")
+
 
     def load_data(self, data_file: Path) -> pd.DataFrame:
         """Loads the data from the given path.
@@ -246,6 +254,9 @@ def main(cfg: DictConfig) -> None:
 
     #plot dataset statistics uploads
     plotter.plot_dataset_statistics_upload(dataset_statistics_upload)
+
+    #plot uncolorized and unprocessed batches
+    plotter.plot_uncolorized_batches(uncolorized_batches)
 
 
     #plot recent uploads and colorized images
