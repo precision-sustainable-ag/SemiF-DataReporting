@@ -27,7 +27,8 @@ class ExporterBlobMetrics:
             cfg: DictConfig - The configuration data.
         """
         self.__auth_config_data = read_yaml(cfg.paths.pipeline_keys)
-        self.output_dir = cfg.paths.data_dir
+        self.output_dir = Path(cfg.paths.data_dir, "blob_containers")
+        self.output_dir.mkdir(exist_ok=True, parents=True)
         
     def run_azcopy_ls(self) -> None:
         """
