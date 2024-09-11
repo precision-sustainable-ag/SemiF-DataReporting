@@ -1,3 +1,5 @@
+outputs
+notebooks
 data/*.txt
 logs
 **.pdf

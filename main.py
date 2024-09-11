@@ -17,20 +17,19 @@ azlogger = logging.getLogger("azure")
 # Set the logging level to CRITICAL to turn off regular logging
 azlogger.setLevel(logging.WARN)
 
-@hydra.main(version_base=None, config_path="conf", config_name="config")
-def main(cfg: DictConfig):
+@hydra.main(version_base="1.3", config_path="conf", config_name="config")
+def main(cfg: DictConfig) -> None:
     cfg = OmegaConf.create(cfg)
-    whoami = getpass.getuser()
-    log.info(f"Running {cfg.task} as {whoami}")
+    log.info(f"Starting task {','.join(cfg.pipeline)}")
+    
+    for tsk in cfg.pipeline:
+        try:
+            task = get_method(f"{tsk}.main")
+            task(cfg)
 
-    try:
-        
-        task = get_method(f"{cfg.task}.main")
-        task(cfg)
-
-    except Exception as e:
-        log.exception("Failed")
-        sys.exit(1)
+        except Exception as e:
+            log.exception("Failed")
+            return
 
 
 if __name__ == "__main__":

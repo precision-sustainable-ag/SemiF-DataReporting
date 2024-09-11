@@ -4,11 +4,12 @@ from omegaconf import DictConfig
 from pathlib import Path
 import json
 import re
+import os
 from typing import List, Dict, Optional, Tuple, Type
 from datetime import datetime
 from tqdm import tqdm
 from utils.utils import TqdmLoggingHandler
-
+from concurrent.futures import ProcessPoolExecutor, ThreadPoolExecutor
 # Set up logging to integrate with tqdm
 log = logging.getLogger(__name__)
 log.setLevel(logging.INFO)
@@ -34,6 +35,30 @@ class BaseCounter:
         Abstract method to get the list of missing files.
         """
         raise NotImplementedError("This method should be overridden by subclasses")
+    
+    def _get_dir_size(self, dir_path: Path) -> int:
+        """
+        Recursively calculate the total size of a directory using os.scandir.
+        Return the size in bytes.
+        """
+        total_size = 0
+        if not Path(dir_path).exists():
+            return total_size
+        with os.scandir(dir_path) as it:
+            for entry in it:
+                if entry.is_file():
+                    total_size += entry.stat().st_size
+                elif entry.is_dir():
+                    total_size += self._get_dir_size(entry.path)
+        return total_size
+
+    def get_folder_size(self, subfolder: Path) -> float:
+        """
+        Calculate the size of a specific subfolder (e.g., images, metadata, meta_masks).
+        Return the size in GiB.
+        """
+        return self._get_dir_size(subfolder) / (1024 ** 3)  # Convert bytes to GiB
+
 
 class SubfolderCounter(BaseCounter):
     def __init__(self, batch_path: Path):
@@ -89,10 +114,10 @@ class CutoutCounter(BaseCounter):
         """
         Get the list of missing .jpg, .png, .json, or _mask.png files.
         """
-        log.info("Getting all files in batch path...")
+        log.debug("Getting all files in batch path...")
         all_files = list(self.batch_path.glob('*'))
 
-        log.info("Processing file extensions...")
+        log.debug("Processing file extensions...")
         stems = set(f.stem for f in all_files if f.suffix in {'.jpg', '.png', '.json', '_mask.png'})
         jpg_stems = {f.stem for f in all_files if f.suffix == '.jpg'}
         png_stems = {f.stem for f in all_files if f.suffix == '.png'}
@@ -107,6 +132,37 @@ class CutoutCounter(BaseCounter):
         }
 
         return missing_files
+
+    def get_file_sizes(self) -> Dict[str, float]:
+        """
+        Calculate the total size of .jpg, .png (excluding _mask.png), .json, and _mask.png files
+        in the batch folder. Return the sizes in GiB.
+        """
+        file_sizes = {
+            "jpg_size": 0,
+            "png_size": 0,
+            "json_size": 0,
+            "mask_size": 0
+        }
+
+        # Traverse the directory using os.scandir for efficient file listing
+        for entry in os.scandir(self.batch_path):
+            if entry.is_file():
+                if entry.name.endswith(".jpg"):
+                    file_sizes["jpg_size"] += entry.stat().st_size
+                elif entry.name.endswith(".json"):
+                    file_sizes["json_size"] += entry.stat().st_size
+                elif entry.name.endswith(".png"):
+                    if "_mask" in entry.name:
+                        file_sizes["mask_size"] += entry.stat().st_size
+                    else:
+                        file_sizes["png_size"] += entry.stat().st_size
+
+        # Convert sizes to GiB
+        for key in file_sizes:
+            file_sizes[key] = file_sizes[key] / (1024 ** 3)  # Convert bytes to GiB
+
+        return file_sizes
 
 class BaseBatchChecker:
     def __init__(self, batch_path: Path):
@@ -154,17 +210,27 @@ class SemifieldDevelopedBatchChecker(BaseBatchChecker):
         """
         return not metadata_path.exists() or not meta_masks_path.exists()
 
+    
     def check_batch(self) -> Optional[Dict[str, any]]:
         """
-        Check the batch for subfolder counts, matching counts, unprocessed status, format type, and missing files.
+        Check the batch for subfolder counts, matching counts, unprocessed status, format type,
+        missing files, and add the size of each subfolder (images, metadata, meta_masks) using multithreading.
         """
         if self.validator.is_valid_batch_name(self.batch_path.name):
-            log.info(f"Valid batch found: {self.batch_path.name}")
+            log.debug(f"Valid batch found: {self.batch_path.name}")
             images_count, metadata_count, meta_masks_count = self.counter.get_subfolder_counts()
             has_matching = self.check_has_matching(images_count, metadata_count, meta_masks_count)
             unprocessed = self.check_unprocessed(self.counter.metadata_path, self.counter.meta_masks_path)
             format_type = self.determine_format_type(self.counter.metadata_path, "annotations")
-            missing_files = self.counter.get_missing_files()
+
+            # Use ThreadPoolExecutor to get subfolder sizes concurrently
+            with ThreadPoolExecutor() as executor:
+                futures = {
+                    "ImagesFolderSizeGiB": executor.submit(self.counter.get_folder_size, self.counter.images_path),
+                    "MetadataFolderSizeGiB": executor.submit(self.counter.get_folder_size, self.counter.metadata_path),
+                    "MetaMasksFolderSizeGiB": executor.submit(self.counter.get_folder_size, self.counter.meta_masks_path),
+                }
+                subfolder_sizes = {key: future.result() for key, future in futures.items()}
 
             batch_info = {
                 "path": str(self.batch_path.parent.parent.name),
@@ -175,9 +241,7 @@ class SemifieldDevelopedBatchChecker(BaseBatchChecker):
                 "HasMatching": has_matching,
                 "UnProcessed": unprocessed,
                 "FormatType": format_type,
-                "MissingImages": missing_files["missing_images"],
-                "MissingMetadata": missing_files["missing_metadata"],
-                "MissingMetaMasks": missing_files["missing_meta_masks"]
+                **subfolder_sizes  # Add folder sizes
             }
 
             return batch_info
@@ -196,16 +260,23 @@ class SemifieldCutoutBatchChecker(BaseBatchChecker):
         """
         return jpg_count == png_count == json_count == mask_count
 
+    
+    
     def check_batch(self) -> Optional[Dict[str, any]]:
         """
-        Check the batch for cutout counts, matching counts, and missing files.
+        Check the batch for file sizes (.jpg, .png, .json, and _mask.png) using multithreading.
         """
         if self.validator.is_valid_batch_name(self.batch_path.name):
-            log.info(f"Valid batch found: {self.batch_path.name}")
+            log.debug(f"Valid batch found: {self.batch_path.name}")
             jpg_count, png_count, json_count, mask_count = self.counter.get_cutout_counts()
             has_matching = self.check_has_matching(jpg_count, png_count, json_count, mask_count)
             format_type = self.determine_format_type(self.batch_path, "category")
-            missing_files = self.counter.get_missing_files()
+            # missing_files = self.counter.get_missing_files()
+            # Use ProcessPoolExecutor to calculate sizes concurrently
+            with ProcessPoolExecutor() as executor:
+                future = executor.submit(self.counter.get_file_sizes)
+                file_sizes = future.result()
+            
 
             batch_info = {
                 "path": str(self.batch_path.parent.parent.name),
@@ -216,10 +287,10 @@ class SemifieldCutoutBatchChecker(BaseBatchChecker):
                 "mask_count": mask_count,
                 "HasMatching": has_matching,
                 "FormatType": format_type,
-                "MissingJpg": missing_files["missing_jpg"],
-                "MissingPng": missing_files["missing_png"],
-                "MissingJson": missing_files["missing_json"],
-                "MissingMask": missing_files["missing_mask"]
+                "jpg_size_gib": file_sizes["jpg_size"],  # Size of all .jpg files in GiB
+                "png_size_gib": file_sizes["png_size"],  # Size of all .png files (excluding masks) in GiB
+                "json_size_gib": file_sizes["json_size"],  # Size of all .json files in GiB
+                "mask_size_gib": file_sizes["mask_size"],  # Size of all _mask.png files in GiB
             }
 
             return batch_info
@@ -280,7 +351,7 @@ def main(cfg: DictConfig) -> None:
     """
     Main function to execute the BlobMetricExporter.
     """
-    log.info(f"Starting {cfg.task}")
+    log.info(f"Starting local_batch_table_generator")
 
     # Define paths for batches with subdirectories
     paths_with_subdirectories = [
@@ -295,7 +366,7 @@ def main(cfg: DictConfig) -> None:
     ]
 
     # Generate and save report for batches with subdirectories
-    generate_and_save_report(cfg, paths_with_subdirectories, SemifieldDevelopedBatchChecker, "semif_developed_batch_details")
+    # generate_and_save_report(cfg, paths_with_subdirectories, SemifieldDevelopedBatchChecker, "semif_developed_batch_details")
 
     # Generate and save report for batches without subdirectories
     generate_and_save_report(cfg, paths_without_subdirectories, SemifieldCutoutBatchChecker, "semif_cutouts_batch_details")
