@@ -7,6 +7,23 @@ defaults:
 
 report:
 pipeline:
-  - local_batch_table_generator
+  # - local_batch_table_generator
+  # - json_to_mongo
+  - semif_fullsized_tables
+
+  # - semif_cutout_tables
+
 #folders and their corresponding ile types that will be matched in the data directory
 matching_folders: {'images':'jpg','instance_masks':'png','semantic_masks':'png','metadata':'json'}
+
+json_to_mongo:
+  data_types:
+    - fullsized
+    # - cutouts
+
+mongodb:
+  host: localhost
+  port: 27017
+  db: semif_db
+  cutout_collection: cutouts
+  fullsized_collection: fullsized
