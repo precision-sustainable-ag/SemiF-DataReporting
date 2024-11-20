@@ -1,12 +1,12 @@
 # Hydra defaults and settings. Ignore these (don't change)
 defaults:
-  - _self_
-  - date_ranges: date_ranges
-  
+  - _self_  
   - paths: default
 
 report:
 pipeline:
-  - local_batch_table_generator
+  # - export_blob_metrics
+  - list_blob_contents
+  # - local_batch_table_generator
 #folders and their corresponding ile types that will be matched in the data directory
 matching_folders: {'images':'jpg','instance_masks':'png','semantic_masks':'png','metadata':'json'}

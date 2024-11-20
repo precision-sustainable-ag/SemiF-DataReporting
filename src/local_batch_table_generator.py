@@ -366,7 +366,7 @@ def main(cfg: DictConfig) -> None:
     ]
 
     # Generate and save report for batches with subdirectories
-    # generate_and_save_report(cfg, paths_with_subdirectories, SemifieldDevelopedBatchChecker, "semif_developed_batch_details")
+    generate_and_save_report(cfg, paths_with_subdirectories, SemifieldDevelopedBatchChecker, "semif_developed_batch_details")
 
     # Generate and save report for batches without subdirectories
     generate_and_save_report(cfg, paths_without_subdirectories, SemifieldCutoutBatchChecker, "semif_cutouts_batch_details")
