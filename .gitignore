@@ -1,5 +1,5 @@
-data
-tables
+data/
+tables/
 outputs
 notebooks
 data/*.txt
