@@ -23,11 +23,11 @@ class MongoTableGenerator:
         self.client = MongoClient(host=cfg.mongodb.host, port=cfg.mongodb.port)
         self.db = self.client[cfg.mongodb.db]
         self.collection = self.db[cfg.mongodb.fullsized_collection]
-        self.table_dir = Path(cfg.paths.tables_dir, "fullsized")
+        self.table_dir = Path(cfg.paths.reports_dir, "tables", "fullsized")
         self.table_dir.mkdir(parents=True, exist_ok=True)
 
         log.debug(f"Connected to MongoDB database: {cfg.mongodb.db} and collection: {cfg.mongodb.fullsized_collection}")
-        log.debug(f"Output directory for tables: {self.table_dir}")
+        log.info(f"Created output directory for tables (if not already existing): {self.table_dir}")
 
     def _save_to_csv(self, df: pd.DataFrame, filename: str) -> Path:
         """
@@ -36,7 +36,6 @@ class MongoTableGenerator:
         timestamp = datetime.now().strftime('%Y%m%d')
         filepath = self.table_dir / f"{filename}_{timestamp}.csv"
         df.to_csv(filepath, index=False)
-        log.debug(f"Report saved to CSV: {filepath}")
         return filepath
     
     def _aggregate_data(self, pipeline: list, columns: list) -> pd.DataFrame:
@@ -50,10 +49,11 @@ class MongoTableGenerator:
             # Flatten the '_id' field into individual fields
             flattened_result = {**result["_id"], "count": result["count"]}
             data.append(flattened_result)
-        log.debug(f"Aggregation completed with {len(data)} records")
-
+        log.debug(f"Aggregation completed successfully with {len(data)} records aggregated.")
+        
         # Convert to DataFrame and assign column names
         df = pd.DataFrame(data, columns=columns)
+        log.debug(f"DataFrame created with columns: {columns} and {len(df)} rows.")
         return df
     
     def table_by_common_name(self) -> pd.DataFrame:
@@ -94,7 +94,8 @@ class MongoTableGenerator:
         df = self._aggregate_data(pipeline, columns)
 
         # Save to CSV
-        self._save_to_csv(df.sort_values(by="count", ascending=False), "count_by_common_name")
+        saved_filepath = self._save_to_csv(df.sort_values(by="count", ascending=False), "count_by_common_name")
+        log.info(f"Report by common name saved to: {saved_filepath}")
 
         return df
 
@@ -139,7 +140,8 @@ class MongoTableGenerator:
         df = self._aggregate_data(pipeline, columns)
 
         # Save to CSV
-        self._save_to_csv(df.sort_values(by="count", ascending=False), "count_by_location_and_common_name")
+        saved_filepath = self._save_to_csv(df.sort_values(by="count", ascending=False), "count_by_location_and_common_name")
+        log.info(f"Report by location and common name saved to: {saved_filepath}")
 
         return df
 
@@ -147,12 +149,12 @@ class MongoTableGenerator:
 def main(cfg: DictConfig) -> None:
     log.info("Starting the MongoDB report generation process...")
     
-    # Initialize the MongoReportGenerator with the provided configuration
+    # Initialize the MongoTableGenerator with the provided configuration
     table_generator = MongoTableGenerator(cfg)
     
     # Generate and save reports
-    log.info("Generating and saving reports...")
+    log.debug("Generating and saving reports...")
     table_generator.table_by_location_and_common_name()
     table_generator.table_by_common_name()
     
-    log.info("Report generation process completed successfully")
+    log.debug("Report generation process completed successfully.")
