@@ -3,7 +3,7 @@ from pathlib import Path
 from omegaconf import DictConfig
 from tqdm import tqdm
 import os
-from utils.utils import read_yaml
+from utils.utils import read_yaml, format_az_file_list
 from concurrent.futures import ProcessPoolExecutor
 import subprocess
 
@@ -63,9 +63,17 @@ class ExporterBlobMetrics:
             outputtxt = Path(self.output_dir, k + ".txt")
             with open(outputtxt, "w") as f:
                 f.write(output)
+                
+    def get_data_splits(self):
+        """Retrieve and return lists of cutout and developed images."""
+        cutouts_blob_data = format_az_file_list(os.path.join(self.output_dir, 'semifield-cutouts.txt'))
+        developed_blob_data = format_az_file_list(os.path.join(self.output_dir, 'semifield-developed-images.txt'))
+        log.info(cutouts_blob_data.keys())
+        log.info(developed_blob_data.keys())
 
 def main(cfg: DictConfig) -> None:
     """Main function to execute the BlobMetricExporter."""
     exporter = ExporterBlobMetrics(cfg)
-    exporter.run_azcopy_ls()
+    # exporter.run_azcopy_ls()
     log.info("Extracting data completed.")
+    exporter.get_data_splits()
