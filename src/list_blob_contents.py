@@ -3,7 +3,7 @@ from pathlib import Path
 from omegaconf import DictConfig
 from tqdm import tqdm
 import os
-from utils.utils import read_yaml, format_az_file_list
+from utils.utils import read_yaml, format_az_file_list, az_get_batches_size
 from concurrent.futures import ProcessPoolExecutor
 import subprocess
 
@@ -16,6 +16,7 @@ class ExporterBlobMetrics:
         self.output_dir = Path(cfg.paths.data_dir, "blob_containers")
         self.output_dir.mkdir(exist_ok=True, parents=True)
         self.azcopy_cmd = "./azcopy" if os.path.exists("./azcopy") else "azcopy"
+        self.task_config = cfg.list_blob_contents
 
     def run_command(self, command: str) -> str:
         try:
@@ -66,10 +67,57 @@ class ExporterBlobMetrics:
                 
     def get_data_splits(self):
         """Retrieve and return lists of cutout and developed images."""
-        cutouts_blob_data = format_az_file_list(os.path.join(self.output_dir, 'semifield-cutouts.txt'))
-        developed_blob_data = format_az_file_list(os.path.join(self.output_dir, 'semifield-developed-images.txt'))
-        log.info(cutouts_blob_data.keys())
-        log.info(developed_blob_data.keys())
+        # cutouts_blob_data = format_az_file_list(os.path.join(self.output_dir, 'semifield-cutouts.txt'))
+        # read az data for semif-uploads
+        uploads_blob_data = format_az_file_list(os.path.join(self.output_dir,'semifield-uploads.txt'))
+        developed_blob_data = format_az_file_list(
+            os.path.join(self.output_dir, 'semifield-developed-images.txt'), 
+            self.task_config['unprocessed_folders'], 
+            self.task_config['processed_folders'])
+
+        # uploads vs developed -> preprocessed
+        
+        # if batch in both places (semif-uploads + semif-developed) - preprocessed/processed (if processed folders exist)
+        # else unpreprocessed
+        
+        uploads_blob_data = {k: v for k, v in uploads_blob_data.items() if k in self.task_config['batch_prefixes']}  # cleanup
+        preprocessed_batches, unpreprocessed_batches = [], []
+        for batch_prefix, batches in uploads_blob_data.items():
+            # calculate total size for semif-uploads folder
+            # check if files have jpg extension (can be expanded + config needs rework)
+            for batch_name, batch_info in batches.items():
+                total_size = sum(size for _, size in batch_info['files'])
+                batch_info['total_size'] = total_size
+                if any(os.path.splitext(file)[1].lower() in set(self.task_config['file_extensions']['images']) for file,_ in batch_info['files']):
+                    preprocessed_batches.append(f"{batch_prefix}_{batch_name}")
+                else:
+                    unpreprocessed_batches.append(f"{batch_prefix}_{batch_name}")
+        
+        unpreprocessed_size = az_get_batches_size(uploads_blob_data, unpreprocessed_batches)
+        preprocessed_size = az_get_batches_size(uploads_blob_data, preprocessed_batches)
+
+        log.info(f"Found {len(unpreprocessed_batches)} un-preprocessed batches with total size of {unpreprocessed_size/1024} GiB")
+        log.info(f"Found {len(preprocessed_batches)} preprocessed batches with total size of {preprocessed_size/1024} GiB")
+        log.info(f"{unpreprocessed_batches}")
+
+        developed_blob_data = {k: v for k, v in developed_blob_data.items() if k in self.task_config['batch_prefixes']}  # cleanup
+        unprocessed_batches, processed_batches = [], []
+        for batch_prefix, batches in developed_blob_data.items():
+            for batch_name, batch_info in batches.items():
+                total_size = sum(size for _, size in batch_info['files'])
+                batch_info['total_size'] = total_size
+                if batch_info['processed']:
+                    processed_batches.append(f"{batch_prefix}_{batch_name}")
+                else:
+                    unprocessed_batches.append(f"{batch_prefix}_{batch_name}")
+
+        unprocessed_size = az_get_batches_size(uploads_blob_data, unprocessed_batches)
+        processed_size = az_get_batches_size(uploads_blob_data, processed_batches)
+
+        log.info(f"Found {len(unprocessed_batches)} un-processed batches with total size of {unprocessed_size/1024} GiB")
+        log.info(f"Found {len(processed_batches)} processed batches with total size of {processed_size/1024} GiB")
+        log.info(f"unpre: {unpreprocessed_batches}, unpro: {unprocessed_batches}")
+        log.info(f"pre but not pro: {len(set(preprocessed_batches) - set(processed_batches))}")
 
 def main(cfg: DictConfig) -> None:
     """Main function to execute the BlobMetricExporter."""
