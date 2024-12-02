@@ -23,7 +23,7 @@ class TqdmLoggingHandler(logging.StreamHandler):
         except Exception:
             self.handleError(record)
 
-def format_az_file_list(main_file):
+def format_az_file_list(main_file, unprocessed_folder_list=None, processed_folder_list=None):
     """
     args: 
     filename: text file created by ExportBlobMetrics.run_azcopy_ls
@@ -34,14 +34,10 @@ def format_az_file_list(main_file):
             '<batch_name>': {
                 'files': [(<filename>,<filesize>), (<filename>,<filesize>)],
                 'processed': <True/False>,
-                'total_size': <size in MiB>
             }
         }
     }
     """
-    # TODO: should the size be in GB/MB?
-    # TODO: processed_data_folders needs to be verified
-    processed_data_folders = {'autosfm', 'metadata', 'masks'}
     output = {}
     size_conversion = {"B": 1/1024/2024, "KiB": 1/1024, "MiB": 1, "GiB": 1024}
 
@@ -56,35 +52,70 @@ def format_az_file_list(main_file):
         filesize = float(num) * size_conversion[unit]
         # print(filename, filesize)
         path_splits = filename.split('/')
-        # try catch block to handle and ignore cases like: MD-2024-04-11
-        try:
-            batch_loc, batch_date = path_splits[0].split('_')[:2] # [:2] added to handle cases like TX_2023-09-11_2
-            if not batch_loc in output:
-                output[batch_loc] = {
-                    batch_date: {
-                        'files': [(filename, filesize)],
-                        'processed': True if any(part in processed_data_folders for part in filename.split('/')) else False
+        # if (unprocessed_folder_list and any(part in unprocessed_folder_list for part in path_splits)) or not unprocessed_folder_list:
+        # should only look at these files
+        if not unprocessed_folder_list:
+            # try catch block to handle and ignore cases like: MD-2024-04-11
+            try:
+                # ignore these batches instead (if _2 exists)
+                batch_loc, batch_date = path_splits[0].split('_')[:2] # [:2] added to handle cases like TX_2023-09-11_2
+                if not batch_loc in output:
+                    output[batch_loc] = {
+                        batch_date: {
+                            'files': [(filename, filesize)],
+                            'processed': False if not unprocessed_folder_list else True
+                        }
                     }
-                }
-            elif batch_date in output[batch_loc]:
-                output[batch_loc][batch_date]['files'].append((filename,filesize))
-                if not output[batch_loc][batch_date]['processed'] and any(part in processed_data_folders for part in filename.split('/')):
-                    output[batch_loc][batch_date]['processed'] = True
-            else:
-                # batch_loc is present but batch_date is not
-                output[batch_loc][batch_date] = {
-                    'files':[(filename,filesize)],
-                    'processed': True if any(part in processed_data_folders for part in filename.split('/')) else False
-                }
-        except Exception as e:
-            log.warn(f"Couldn't process file: {filename}")
-        finally:
-            continue
+                elif batch_date in output[batch_loc]:
+                    output[batch_loc][batch_date]['files'].append((filename,filesize))
+                    # if not output[batch_loc][batch_date]['processed'] and any(part in processed_data_folders for part in filename.split('/')):
+                    if not output[batch_loc][batch_date]['processed'] and unprocessed_folder_list:
+                        output[batch_loc][batch_date]['processed'] = True
+                else:
+                    # batch_loc is present but batch_date is not
+                    output[batch_loc][batch_date] = {
+                        'files':[(filename,filesize)],
+                        'processed': False if not unprocessed_folder_list else True
+                    }
+            # except Exception as e:
+            #     log.warn(f"Couldn't process file: {filename}")
+            finally:
+                continue
+        elif any(part in unprocessed_folder_list for part in path_splits):
+            try:
+                # ignore these batches instead (if _2 exists)
+                batch_loc, batch_date = path_splits[0].split('_')[:2] # [:2] added to handle cases like TX_2023-09-11_2
+                if not batch_loc in output:
+                    output[batch_loc] = {
+                        batch_date: {
+                            'files': [(filename, filesize)],
+                            'processed': True if any(part in processed_folder_list for part in path_splits) else False
+                        }
+                    }
+                elif batch_date in output[batch_loc]:
+                    output[batch_loc][batch_date]['files'].append((filename,filesize))
+                    if not output[batch_loc][batch_date]['processed'] and any(part in processed_folder_list for part in path_splits):
+                        output[batch_loc][batch_date]['processed'] = True
+                else:
+                    # batch_loc is present but batch_date is not
+                    output[batch_loc][batch_date] = {
+                        'files':[(filename,filesize)],
+                        'processed': True if any(part in processed_folder_list for part in path_splits) else False
+                    }
+            # except Exception as e:
+            #     log.warn(f"Couldn't process file: {filename}")
+            finally:
+                continue
     
-    # add total size per batch to the output
-    for _, batches in output.items():
-        for _, batch_info in batches.items():
-            total_size = sum(size for _, size in batch_info['files'])
-            batch_info['total_size'] = total_size
     return output
 
+
+def az_get_batches_size(data, batch_names):
+    total_size = 0
+    batch_details = [set(batch_name.split('_')) for batch_name in batch_names]
+    # print(batch_details)
+    for batch_prefix in data:
+        for batch_name, batch_info in data[batch_prefix].items():
+            if batch_name in [x.replace(f"{batch_prefix}_", '') for x in batch_names]:
+                    total_size += batch_info['total_size']
+    return total_size
