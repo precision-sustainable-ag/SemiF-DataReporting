@@ -3,6 +3,7 @@ from pathlib import Path
 from omegaconf import DictConfig
 from tqdm import tqdm
 import os
+import json
 from utils.utils import read_yaml, format_az_file_list, az_get_batches_size
 from concurrent.futures import ProcessPoolExecutor
 import subprocess
@@ -67,6 +68,8 @@ class ExporterBlobMetrics:
                 
     def get_data_splits(self):
         """Retrieve and return lists of cutout and developed images."""
+        # TODO: look into using sets instead of lists for batches
+
         # cutouts_blob_data = format_az_file_list(os.path.join(self.output_dir, 'semifield-cutouts.txt'))
         # read az data for semif-uploads
         uploads_blob_data = format_az_file_list(os.path.join(self.output_dir,'semifield-uploads.txt'))
@@ -88,40 +91,75 @@ class ExporterBlobMetrics:
             for batch_name, batch_info in batches.items():
                 total_size = sum(size for _, size in batch_info['files'])
                 batch_info['total_size'] = total_size
-                if any(os.path.splitext(file)[1].lower() in set(self.task_config['file_extensions']['images']) for file,_ in batch_info['files']):
-                    preprocessed_batches.append(f"{batch_prefix}_{batch_name}")
-                else:
-                    unpreprocessed_batches.append(f"{batch_prefix}_{batch_name}")
-        
-        unpreprocessed_size = az_get_batches_size(uploads_blob_data, unpreprocessed_batches)
-        preprocessed_size = az_get_batches_size(uploads_blob_data, preprocessed_batches)
-
-        log.info(f"Found {len(unpreprocessed_batches)} un-preprocessed batches with total size of {unpreprocessed_size/1024} GiB")
-        log.info(f"Found {len(preprocessed_batches)} preprocessed batches with total size of {preprocessed_size/1024} GiB")
-        log.info(f"{unpreprocessed_batches}")
+                batch_info['file_count'] = len(batch_info['files'])
+                # assume all as unpreprocessed
+                unpreprocessed_batches.append(batch_name)
+                # if any(os.path.splitext(file)[1].lower() in set(self.task_config['file_extensions']['images']) for file,_ in batch_info['files']):
+                #     preprocessed_batches.append(batch_name)
+                # else:
+                #     unpreprocessed_batches.append(batch_name)
+        preprocessed_batches = unpreprocessed_batches
 
         developed_blob_data = {k: v for k, v in developed_blob_data.items() if k in self.task_config['batch_prefixes']}  # cleanup
-        unprocessed_batches, processed_batches = [], []
+        processed_batches = []
         for batch_prefix, batches in developed_blob_data.items():
             for batch_name, batch_info in batches.items():
                 total_size = sum(size for _, size in batch_info['files'])
                 batch_info['total_size'] = total_size
-                if batch_info['processed']:
-                    processed_batches.append(f"{batch_prefix}_{batch_name}")
-                else:
-                    unprocessed_batches.append(f"{batch_prefix}_{batch_name}")
-
+                batch_info['file_count'] = len(batch_info['files'])
+                # assume all as processed
+                processed_batches.append(batch_name)
+                # if batch_info['processed']:
+                #     processed_batches.append(batch_name)
+                # else:
+                #     unprocessed_batches.append(batch_name)
+        
+        # set logic:
+        # 1. all in develop assumed as processed, if exists, cannot be unpreprocessed
+        # 2. preprocessed - was same as unpreprocessed, but unpre updated, so update
+        # 3. exists in both - (unpre+pre) intersection (processed) - pro is currently all in developed
+        unpreprocessed_batches = list(set(unpreprocessed_batches) - set(processed_batches))
+        preprocessed_batches = list(set(preprocessed_batches) - set(unpreprocessed_batches))
+        exists_in_both = set(processed_batches).intersection(set(unpreprocessed_batches).union(set(preprocessed_batches)))
+        
+        unprocessed_batches, processed_batches = [], []
+        for batch_prefix, batches in developed_blob_data.items():
+            for batch_name, batch_info in batches.items():
+                if batch_name in exists_in_both:
+                    processed_batches.append(batch_name) if batch_info['has_processed_folders'] else unprocessed_batches.append(batch_name)
+        
+        unpreprocessed_size = az_get_batches_size(uploads_blob_data, unpreprocessed_batches)
+        preprocessed_size = az_get_batches_size(uploads_blob_data, preprocessed_batches)
         unprocessed_size = az_get_batches_size(uploads_blob_data, unprocessed_batches)
         processed_size = az_get_batches_size(uploads_blob_data, processed_batches)
 
-        log.info(f"Found {len(unprocessed_batches)} un-processed batches with total size of {unprocessed_size/1024} GiB")
-        log.info(f"Found {len(processed_batches)} processed batches with total size of {processed_size/1024} GiB")
-        log.info(f"unpre: {unpreprocessed_batches}, unpro: {unprocessed_batches}")
-        log.info(f"pre but not pro: {len(set(preprocessed_batches) - set(processed_batches))}")
+        batches_info = [
+            ("un-preprocessed", unpreprocessed_batches, unpreprocessed_size),
+            ("preprocessed", preprocessed_batches, preprocessed_size),
+            ("unprocessed", unprocessed_batches, unprocessed_size),
+            ("processed", processed_batches, processed_size)
+        ]
+        for batch_type, batches, total_size in batches_info:
+            log.info(f"Found {len(batches)} {batch_type} batches with total size of {total_size/1024} GiB")
+            data = []
+            if 'preprocessed' in batch_type:
+                for batch_name in batches:
+                    batch_prefix, _ = batch_name.split('_')
+                    data.append(uploads_blob_data[batch_prefix][batch_name])
+            elif 'processed' in batch_type:
+                for batch_name in batches:
+                    batch_prefix, _ = batch_name.split('_')
+                    data.append(developed_blob_data[batch_prefix][batch_name])
+            with open(os.path.join(self.output_dir, f'semifield-{batch_type}.jsonl'), 'w') as file:
+                file.writelines(json.dumps(item) + '\n' for item in data)
+
+
+
+        
 
 def main(cfg: DictConfig) -> None:
     """Main function to execute the BlobMetricExporter."""
     exporter = ExporterBlobMetrics(cfg)
-    # exporter.run_azcopy_ls()
+    exporter.run_azcopy_ls()
     log.info("Extracting data completed.")
     exporter.get_data_splits()
