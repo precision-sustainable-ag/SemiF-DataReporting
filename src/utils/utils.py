@@ -61,21 +61,21 @@ def format_az_file_list(main_file, unprocessed_folder_list=None, processed_folde
                 batch_loc, batch_date = path_splits[0].split('_')[:2] # [:2] added to handle cases like TX_2023-09-11_2
                 if not batch_loc in output:
                     output[batch_loc] = {
-                        batch_date: {
+                        f"{batch_loc}_{batch_date}": {
                             'files': [(filename, filesize)],
-                            'processed': False if not unprocessed_folder_list else True
+                            'has_processed_folders': False if not unprocessed_folder_list else True
                         }
                     }
-                elif batch_date in output[batch_loc]:
-                    output[batch_loc][batch_date]['files'].append((filename,filesize))
+                elif f"{batch_loc}_{batch_date}" in output[batch_loc]:
+                    output[batch_loc][f"{batch_loc}_{batch_date}"]['files'].append((filename,filesize))
                     # if not output[batch_loc][batch_date]['processed'] and any(part in processed_data_folders for part in filename.split('/')):
-                    if not output[batch_loc][batch_date]['processed'] and unprocessed_folder_list:
-                        output[batch_loc][batch_date]['processed'] = True
+                    if not output[batch_loc][f"{batch_loc}_{batch_date}"]['has_processed_folders'] and unprocessed_folder_list:
+                        output[batch_loc][f"{batch_loc}_{batch_date}"]['has_processed_folders'] = True
                 else:
                     # batch_loc is present but batch_date is not
-                    output[batch_loc][batch_date] = {
+                    output[batch_loc][f"{batch_loc}_{batch_date}"] = {
                         'files':[(filename,filesize)],
-                        'processed': False if not unprocessed_folder_list else True
+                        'has_processed_folders': False if not unprocessed_folder_list else True
                     }
             # except Exception as e:
             #     log.warn(f"Couldn't process file: {filename}")
@@ -87,20 +87,20 @@ def format_az_file_list(main_file, unprocessed_folder_list=None, processed_folde
                 batch_loc, batch_date = path_splits[0].split('_')[:2] # [:2] added to handle cases like TX_2023-09-11_2
                 if not batch_loc in output:
                     output[batch_loc] = {
-                        batch_date: {
+                        f"{batch_loc}_{batch_date}": {
                             'files': [(filename, filesize)],
-                            'processed': True if any(part in processed_folder_list for part in path_splits) else False
+                            'has_processed_folders': True if any(part in processed_folder_list for part in path_splits) else False
                         }
                     }
-                elif batch_date in output[batch_loc]:
-                    output[batch_loc][batch_date]['files'].append((filename,filesize))
-                    if not output[batch_loc][batch_date]['processed'] and any(part in processed_folder_list for part in path_splits):
-                        output[batch_loc][batch_date]['processed'] = True
+                elif f"{batch_loc}_{batch_date}" in output[batch_loc]:
+                    output[batch_loc][f"{batch_loc}_{batch_date}"]['files'].append((filename,filesize))
+                    if not output[batch_loc][f"{batch_loc}_{batch_date}"]['has_processed_folders'] and any(part in processed_folder_list for part in path_splits):
+                        output[batch_loc][f"{batch_loc}_{batch_date}"]['has_processed_folders'] = True
                 else:
                     # batch_loc is present but batch_date is not
-                    output[batch_loc][batch_date] = {
+                    output[batch_loc][f"{batch_loc}_{batch_date}"] = {
                         'files':[(filename,filesize)],
-                        'processed': True if any(part in processed_folder_list for part in path_splits) else False
+                        'has_processed_folders': True if any(part in processed_folder_list for part in path_splits) else False
                     }
             # except Exception as e:
             #     log.warn(f"Couldn't process file: {filename}")
@@ -113,9 +113,8 @@ def format_az_file_list(main_file, unprocessed_folder_list=None, processed_folde
 def az_get_batches_size(data, batch_names):
     total_size = 0
     batch_details = [set(batch_name.split('_')) for batch_name in batch_names]
-    # print(batch_details)
     for batch_prefix in data:
         for batch_name, batch_info in data[batch_prefix].items():
-            if batch_name in [x.replace(f"{batch_prefix}_", '') for x in batch_names]:
+            if batch_name in batch_names:
                     total_size += batch_info['total_size']
     return total_size
