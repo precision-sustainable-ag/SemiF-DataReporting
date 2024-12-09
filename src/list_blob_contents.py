@@ -7,6 +7,8 @@ import json
 from utils.utils import read_yaml, format_az_file_list, az_get_batches_size
 from concurrent.futures import ProcessPoolExecutor
 import subprocess
+import pandas as pd
+from datetime import datetime
 
 log = logging.getLogger(__name__)
 
@@ -152,14 +154,79 @@ class ExporterBlobMetrics:
                     data.append(developed_blob_data[batch_prefix][batch_name])
             with open(os.path.join(self.output_dir, f'semifield-{batch_type}.jsonl'), 'w') as file:
                 file.writelines(json.dumps(item) + '\n' for item in data)
+        return processed_batches, unprocessed_batches
 
+class GenerateProcessedCSV():
+    def __init__(self, cfg: DictConfig):
+        self.output_dir = Path(cfg.paths.data_dir, "blob_containers")
+        self.task_config = cfg.list_blob_contents
+        # self.processed_folders = self.task_config.processed_folders
+    
+    def _file_parts(self, path):
+        allparts = []
+        while True:
+            parts = os.path.split(path)
+            if parts[0] == path:  # absolute path
+                allparts.insert(0, parts[0])
+                break
+            elif parts[1] == path:  # relative path
+                allparts.insert(0, parts[1])
+                break
+            else:
+                path = parts[0]
+                allparts.insert(0, parts[1])
+        return [x.lower() for x in allparts if x]  # Remove empty strings
 
+    def _get_subfolder_details(self, batches):
+        data = []
+        for batch_json in batches:
+            details = {}
+            for subfolder in self.task_config.unprocessed_folders:
+                details[subfolder] = {
+                    'count': 0,
+                    'size': 0
+                }
+            # print(details)
+            batch_name = batch_json['files'][0][0].split('/')[0]
+            for file, size in batch_json['files']:
+                file_parts = self._file_parts(file)
+                # print(file_parts)
+                if file_parts[1] in self.task_config['file_extensions']:
+                    if os.path.splitext(file)[1] in set(self.task_config['file_extensions'][file_parts[1]]):
+                        details[file_parts[1]]['count'] += 1
+                        details[file_parts[1]]['size'] += size
+                elif f"{file_parts[1]}/{file_parts[2]}" in self.task_config['file_extensions']:
+                    if os.path.splitext(file)[1] in set(self.task_config['file_extensions'][f"{file_parts[1]}/{file_parts[2]}"]):
+                        details[file_parts[1]]['count'] += 1
+                        details[file_parts[1]]['size'] += size
+            data.append({
+                'path': 'azure',
+                'batch': batch_name,
+                'images': details['images']['count'],
+                'metadata': details['metadata']['count'],
+                'meta_masks': details['meta_masks']['count'],
+                'ImagesFolderSizeGiB': details['images']['size'] / 1024,
+                'MetadataFolderSizeGiB': details['metadata']['size']  / 1024,
+                'MetaMasksFolderSizeGiB': details['meta_masks']['size'] / 1024,
+                'UnProcessed': False if batch_json['has_processed_folders'] else True
+            })
+        return data
+    def create_semif_csv(self):
+        with open(os.path.join(self.output_dir, 'semifield-processed.jsonl'), 'r') as f:
+            processed_batches = [json.loads(x) for x in f.readlines()]
+        with open(os.path.join(self.output_dir, 'semifield-unprocessed.jsonl'), 'r') as f:
+            unprocessed_batches = [json.loads(x) for x in f.readlines()]
+        data = self._get_subfolder_details(processed_batches+unprocessed_batches)
+        df = pd.DataFrame(data)
+        df.to_csv(os.path.join(self.output_dir, f'semif_developed_batch_details_{datetime.now().strftime("%Y%m%d_%H%M%S")}.csv'))
 
         
 
 def main(cfg: DictConfig) -> None:
     """Main function to execute the BlobMetricExporter."""
-    exporter = ExporterBlobMetrics(cfg)
-    exporter.run_azcopy_ls()
+    # exporter = ExporterBlobMetrics(cfg)
+    # exporter.run_azcopy_ls()
     log.info("Extracting data completed.")
-    exporter.get_data_splits()
+    # processed_batches, unprocessed_batches = exporter.get_data_splits()
+    csv_generator = GenerateProcessedCSV(cfg)
+    csv_generator.create_semif_csv()

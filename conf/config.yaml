@@ -24,6 +24,10 @@ list_blob_contents:
     - meta_masks
   file_extensions:
     images: ['.jpg']
+    raw_images: ['.arw', '.raw']
+    metadata: ['.json']
+    meta_masks/semantic_masks: ['.png']
+    
   batch_prefixes:
     - MD
     - TX
