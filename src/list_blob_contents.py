@@ -175,7 +175,7 @@ class GenerateProcessedCSV():
             else:
                 path = parts[0]
                 allparts.insert(0, parts[1])
-        return [x.lower() for x in allparts if x]  # Remove empty strings
+        return [x for x in allparts if x]  # Remove empty strings
 
     def _get_subfolder_details(self, batches):
         data = []
@@ -189,7 +189,7 @@ class GenerateProcessedCSV():
             # print(details)
             batch_name = batch_json['files'][0][0].split('/')[0]
             for file, size in batch_json['files']:
-                file_parts = self._file_parts(file)
+                file_parts = [x.lower() for x in self._file_parts(file)]
                 # print(file_parts)
                 if file_parts[1] in self.task_config['file_extensions']:
                     if os.path.splitext(file)[1] in set(self.task_config['file_extensions'][file_parts[1]]):
@@ -211,14 +211,67 @@ class GenerateProcessedCSV():
                 'UnProcessed': False if batch_json['has_processed_folders'] else True
             })
         return data
+    
+    def _get_batch_details(self, batch_details):
+        batch_name = self._file_parts(batch_details['files'][0][0])[0]
+        data = {
+            'path': 'azure',
+            'batch': batch_name,
+            'jpg_count': 0,
+            'png_count': 0,
+            'json_count': 0,
+            'mask_count': 0,
+            'jpg_size_gib': 0,
+            'png_size_gib': 0,
+            'json_size_gib': 0,
+            'mask_size_gib': 0
+        }
+        for filename, filesize in batch_details['files']:
+            if os.path.splitext(filename)[1].lower() == '.jpg':
+                data['jpg_count'] += 1
+                data['jpg_size_gib'] += filesize
+            elif os.path.splitext(filename)[1].lower() == '.json':
+                data['json_count'] += 1
+                data['json_size_gib'] += filesize
+            elif filename.lower().endswith('_mask.png'):
+                data['mask_count'] += 1
+                data['mask_size_gib'] += filesize
+            elif os.path.splitext(filename)[1].lower() == '.png':
+                data['png_count'] += 1
+                data['png_size_gib'] += filesize
+
+        data['jpg_size_gib'] /= 1024
+        data['json_size_gib'] /= 1024
+        data['png_size_gib'] /= 1024
+        data['mask_size_gib'] /= 1024
+
+        return data
+    def _read_semif_cutouts(self):
+        # with open(os.path.join(self.output_dir, 'semifield-cutouts.txt'), 'r') as f:
+        #     data = [x.replace('\n', '') for x in f.readlines()]
+        cutouts_blob_data = format_az_file_list(os.path.join(self.output_dir, 'semifield-cutouts.txt'))
+        data = []
+        
+        # TODO: can be parallelized
+        for location, batches in cutouts_blob_data.items():
+            for batch_name, details in batches.items():
+                data.append(self._get_batch_details(details))
+        return data
+
     def create_semif_csv(self):
         with open(os.path.join(self.output_dir, 'semifield-processed.jsonl'), 'r') as f:
             processed_batches = [json.loads(x) for x in f.readlines()]
         with open(os.path.join(self.output_dir, 'semifield-unprocessed.jsonl'), 'r') as f:
             unprocessed_batches = [json.loads(x) for x in f.readlines()]
-        data = self._get_subfolder_details(processed_batches+unprocessed_batches)
+        # data = self._get_subfolder_details(processed_batches+unprocessed_batches)
+        # df = pd.DataFrame(data)
+        # df.to_csv(os.path.join(self.output_dir, f'semif_developed_batch_details_{datetime.now().strftime("%Y%m%d_%H%M%S")}.csv'))
+
+        data = self._read_semif_cutouts()
         df = pd.DataFrame(data)
-        df.to_csv(os.path.join(self.output_dir, f'semif_developed_batch_details_{datetime.now().strftime("%Y%m%d_%H%M%S")}.csv'))
+        df.to_csv(os.path.join(self.output_dir, f'semif_cutouts_batch_details_{datetime.now().strftime("%Y%m%d_%H%M%S")}.csv'))
+    
+    
 
         
 
@@ -229,4 +282,5 @@ def main(cfg: DictConfig) -> None:
     log.info("Extracting data completed.")
     # processed_batches, unprocessed_batches = exporter.get_data_splits()
     csv_generator = GenerateProcessedCSV(cfg)
+    # csv_generator.create_semif_csv()
     csv_generator.create_semif_csv()
