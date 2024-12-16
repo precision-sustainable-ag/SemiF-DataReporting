@@ -142,7 +142,10 @@ class ExporterBlobMetrics:
             ("processed", processed_batches, processed_size)
         ]
         for batch_type, batches, total_size in batches_info:
-            log.info(f"Found {len(batches)} {batch_type} batches with total size of {total_size/1024} GiB")
+            log_string = f"Found {len(batches)} {batch_type} batches with total size of {total_size/1024} GiB"
+            log.info(log_string)
+            with open(os.path.join(self.output_dir, f'semif-HighLevelStats.txt'), 'a') as f:
+                f.write(log_string +'\n')
             data = []
             if 'preprocessed' in batch_type:
                 for batch_name in batches:
@@ -154,7 +157,6 @@ class ExporterBlobMetrics:
                     data.append(developed_blob_data[batch_prefix][batch_name])
             with open(os.path.join(self.output_dir, f'semifield-{batch_type}.jsonl'), 'w') as file:
                 file.writelines(json.dumps(item) + '\n' for item in data)
-        return processed_batches, unprocessed_batches
 
 class GenerateProcessedCSV():
     def __init__(self, cfg: DictConfig):
@@ -250,6 +252,7 @@ class GenerateProcessedCSV():
         # with open(os.path.join(self.output_dir, 'semifield-cutouts.txt'), 'r') as f:
         #     data = [x.replace('\n', '') for x in f.readlines()]
         cutouts_blob_data = format_az_file_list(os.path.join(self.output_dir, 'semifield-cutouts.txt'))
+        cutouts_blob_data = {k: v for k, v in cutouts_blob_data.items() if k in self.task_config['batch_prefixes']}
         data = []
         
         # TODO: can be parallelized
@@ -263,13 +266,16 @@ class GenerateProcessedCSV():
             processed_batches = [json.loads(x) for x in f.readlines()]
         with open(os.path.join(self.output_dir, 'semifield-unprocessed.jsonl'), 'r') as f:
             unprocessed_batches = [json.loads(x) for x in f.readlines()]
-        # data = self._get_subfolder_details(processed_batches+unprocessed_batches)
-        # df = pd.DataFrame(data)
-        # df.to_csv(os.path.join(self.output_dir, f'semif_developed_batch_details_{datetime.now().strftime("%Y%m%d_%H%M%S")}.csv'))
-
+        
+        data = self._get_subfolder_details(processed_batches+unprocessed_batches)
+        df = pd.DataFrame(data)
+        df.to_csv(os.path.join(self.output_dir, f'semif_developed_batch_details_{datetime.now().strftime("%Y%m%d_%H%M%S")}.csv'))
+        log.info("developed images csv written to data location")
+        
         data = self._read_semif_cutouts()
         df = pd.DataFrame(data)
         df.to_csv(os.path.join(self.output_dir, f'semif_cutouts_batch_details_{datetime.now().strftime("%Y%m%d_%H%M%S")}.csv'))
+        log.info("cutouts images csv written to data location")
     
     
 
@@ -277,10 +283,13 @@ class GenerateProcessedCSV():
 
 def main(cfg: DictConfig) -> None:
     """Main function to execute the BlobMetricExporter."""
-    # exporter = ExporterBlobMetrics(cfg)
-    # exporter.run_azcopy_ls()
+    exporter = ExporterBlobMetrics(cfg)
+    exporter.run_azcopy_ls()
     log.info("Extracting data completed.")
-    # processed_batches, unprocessed_batches = exporter.get_data_splits()
+    # TODO: can this whole thing be removed if the aim is just the csvs
+    exporter.get_data_splits()
+    log.info("Generated high-level stats and converted data to jsonl format")
+
     csv_generator = GenerateProcessedCSV(cfg)
     # csv_generator.create_semif_csv()
     csv_generator.create_semif_csv()
