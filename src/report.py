@@ -80,9 +80,19 @@ class Report:
             'blocks': self.message_blocks
         }
         try:
-            response = client.chat_postMessage(**message)
-            if response["ok"]:
-                print("Message sent successfully")
+            # response = client.chat_postMessage(**message)
+            # print("response 1: ", response)
+            file_response = client.files_upload_v2(
+                # channel=response['channel'],
+                channel='C083GS3GD5Z',
+                file=os.path.join(self.source_location, 'blob_containers', 'semif-HighLevelStats.txt'),
+                # initial_comment="Here's the attached file",
+                # thread_ts=response['ts'],
+                thread_ts='1734350163.621779'
+            )
+            print("response 2: ", file_response)
+            # if response["ok"]:
+            #     print("Message sent successfully")
         except SlackApiError as e:
             print(f"Error: {e}")
 
