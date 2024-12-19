@@ -1,6 +1,8 @@
 import logging
 import shutil
 import os
+import pandas as pd
+import matplotlib.pyplot as plt
 from pathlib import Path
 from omegaconf import DictConfig
 from datetime import datetime
@@ -29,6 +31,7 @@ class Report:
                 'type': 'divider'
             }
         ]
+        self.files = []
         
     def _copy_relevant_files(self):
         # get relevant blobcontainers files
@@ -49,6 +52,10 @@ class Report:
                     'text': ''.join(f.readlines())
                 }
             })
+        # TODO: change this to get all pngs
+        self.files.append(os.path.join(self.report_folder, 'processed_by_states.png'))
+        self.files.append(os.path.join(self.report_folder, 'processed_images_by_state.png'))
+        self.files.append(os.path.join(self.report_folder, 'processed_images_by_year.png'))
 
     def send_slack_notification(self):
         client = WebClient(token=self.__auth_config_data['slack_api_token'])
@@ -80,21 +87,65 @@ class Report:
             'blocks': self.message_blocks
         }
         try:
-            # response = client.chat_postMessage(**message)
-            # print("response 1: ", response)
-            file_response = client.files_upload_v2(
-                # channel=response['channel'],
-                channel='C083GS3GD5Z',
-                file=os.path.join(self.source_location, 'blob_containers', 'semif-HighLevelStats.txt'),
-                # initial_comment="Here's the attached file",
-                # thread_ts=response['ts'],
-                thread_ts='1734350163.621779'
-            )
-            print("response 2: ", file_response)
+            message_response = client.chat_postMessage(**message)
+            
+            log.info(f"sent slack message to channel - {message_response['channel']}, thread - {message_response['ts']}")
+
+            for file in self.files:
+                file_response = client.files_upload_v2(
+                    channel=message_response['channel'],
+                    file=file,
+                    # initial_comment="Here's the attached file",
+                    thread_ts=message_response['ts'],
+                )
+            # print("response 2: ", file_response)
             # if response["ok"]:
             #     print("Message sent successfully")
         except SlackApiError as e:
             print(f"Error: {e}")
+
+    def generate_graphs(self, csv_file):
+        def split_field(row):
+            parts = row['batch'].split('_')
+            return pd.Series({'state': parts[0], 'date': parts[1]})
+        
+        df = pd.read_csv(csv_file, index_col=0)
+        df[['state', 'date']] = df.apply(split_field, axis=1)
+        df['year'] = pd.to_datetime(df['date']).dt.year
+        processed_images_by_state = df[df['UnProcessed'] == False].groupby('state')['images'].sum()
+        processed_images_by_year = df[df['UnProcessed'] == False].groupby('year')['images'].sum()
+        
+        # processed/unprocessed high level stats
+        plot_data = pd.crosstab(df['state'], df['UnProcessed'])
+        ax = plot_data.plot(kind='bar', stacked=False, figsize=(10, 6))
+        plt.title('Patterns of UnProcessed True/False by State')
+        plt.xlabel('State')
+        plt.ylabel('Count')
+        plt.legend(title='UnProcessed')
+        plt.tight_layout()
+        plt.savefig(os.path.join(self.report_folder,'processed_by_states.png'), dpi=300)
+
+        # processed image count by state
+        plt.figure(figsize=(10, 5))
+        processed_images_by_state.plot(kind='bar', color='skyblue')
+        plt.title('Number of Processed Images by State')
+        plt.xlabel('State')
+        plt.ylabel('Number of Processed Images')
+        plt.xticks(rotation=0)
+        plt.tight_layout()
+        plt.savefig(os.path.join(self.report_folder,'processed_images_by_state.png'), dpi=300)
+
+        # processed image count by year
+        plt.figure(figsize=(10, 5))
+        processed_images_by_year.plot(kind='bar', color='skyblue')
+        plt.title('Number of Processed Images by Year')
+        plt.xlabel('Year')
+        plt.ylabel('Number of Processed Images')
+        plt.xticks(rotation=0)
+        plt.tight_layout()
+        plt.savefig(os.path.join(self.report_folder,'processed_images_by_year.png'), dpi=300)
+
+        return
 
 def main(cfg: DictConfig) -> None:
     """Main function to execute report generation and sending it to slack."""
