@@ -15,5 +15,7 @@ report: ${paths.root_dir}/reports/
 pipeline_keys: ${paths.root_dir}/keys/authorized_keys.yaml
 
 # NCSU Storage lockers
-longterm_images: /mnt/research-projects/s/screberg/longterm_images
-GROW_DATA: /mnt/research-projects/s/screberg/GROW_DATA
+# longterm_images: /mnt/research-projects/s/screberg/longterm_images
+# GROW_DATA: /mnt/research-projects/s/screberg/GROW_DATA
+longterm_images: /Volumes/screberg/longterm_images
+GROW_DATA: /Volumes/screberg/GROW_DATA
