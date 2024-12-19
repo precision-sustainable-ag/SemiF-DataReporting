@@ -43,6 +43,13 @@ def format_az_file_list(main_file, unprocessed_folder_list=None, processed_folde
 
     filelines =  open(main_file, 'r').readlines()
     for line in filelines:
+        if not line.strip():
+            continue
+        
+        # ignores 'INFO: ' and 'azcopy' from other azcopy versions
+        line = line.replace("INFO: ", "")
+        if "azcopy" in line:
+            continue
         filename, size_string = line.replace('\n','').split(';')
         size_regex = r'Content Length: ([\d.]+) (\w+)'
         match = re.search(size_regex, size_string)
