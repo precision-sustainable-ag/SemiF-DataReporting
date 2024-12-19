@@ -353,17 +353,11 @@ def main(cfg: DictConfig) -> None:
     """
     log.info(f"Starting local_batch_table_generator")
 
-    # Define paths for batches with subdirectories
-    paths_with_subdirectories = [
-        Path(cfg.paths.longterm_images, "semifield-developed-images"),
-        Path(cfg.paths.GROW_DATA, "semifield-developed-images"),
-    ]
+    paths_with_subdirectories, paths_without_subdirectories = [], []
 
-    # Define paths for batches without subdirectories
-    paths_without_subdirectories = [
-        Path(cfg.paths.longterm_images, "semifield-cutouts"),
-        Path(cfg.paths.GROW_DATA, "semifield-cutouts"),
-    ]
+    for location in cfg.paths.lts_locations:
+        paths_with_subdirectories.append(Path(location, 'semifield-developed-images'))
+        paths_without_subdirectories.append(Path(location, 'semifield-cutouts'))
 
     # Generate and save report for batches with subdirectories
     generate_and_save_report(cfg, paths_with_subdirectories, SemifieldDevelopedBatchChecker, "semif_developed_batch_details")
