@@ -5,9 +5,9 @@ defaults:
 
 report:
 pipeline:
-- list_blob_contents
+  - list_blob_contents
   # - export_blob_metrics
-  # - local_batch_table_generator
+  - local_batch_table_generator
 
 #folders and their corresponding ile types that will be matched in the data directory
 matching_folders: {'images':'jpg','instance_masks':'png','semantic_masks':'png','metadata':'json'}
