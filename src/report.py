@@ -33,17 +33,23 @@ class Report:
         ]
         self.files = []
         
-    def _copy_relevant_files(self):
+    def copy_relevant_files(self):
         # get relevant blobcontainers files
         # pass in the filename for the latest csvs
         # Copies file with metadata (creation and modification times)
         blob_container_folder = os.path.join(self.source_location, 'blob_containers')
         
         shutil.copy2(os.path.join(blob_container_folder, 'semif-HighLevelStats.txt'), self.report_folder)
+
+        shutil.copy2(os.path.join(blob_container_folder, f'semif_cutouts_batch_details_{datetime.now().strftime("%Y%m%d")}.csv'), os.path.join(self.report_folder, f'semif_cutouts_batch_details_az.csv'))
+        shutil.copy2(os.path.join(blob_container_folder, f'semif_developed_batch_details_{datetime.now().strftime("%Y%m%d")}.csv'), os.path.join(self.report_folder, f'semif_developed_batch_details_az.csv'))
+
+        lts_location_folder = os.path.join(self.source_location, 'storage_lockers')
+        shutil.copy2(os.path.join(lts_location_folder, f'semif_upload_batch_details_{datetime.now().strftime("%Y%m%d")}.csv'), os.path.join(self.report_folder, f'semif_upload_batch_details_lts.csv'))
+        shutil.copy2(os.path.join(lts_location_folder, f'semif_cutouts_batch_details_{datetime.now().strftime("%Y%m%d")}.csv'), os.path.join(self.report_folder, f'semif_cutouts_batch_details_lts.csv'))
+        shutil.copy2(os.path.join(lts_location_folder, f'semif_developed_batch_details_{datetime.now().strftime("%Y%m%d")}.csv'), os.path.join(self.report_folder, f'semif_developed_batch_details_lts.csv'))
     
     def compose_slack_message(self):
-        self._copy_relevant_files()
-        
         with open(os.path.join(self.report_folder, 'semif-HighLevelStats.txt'), 'r') as f:
             self.message_blocks.append({
                 'type': 'section',
@@ -52,10 +58,10 @@ class Report:
                     'text': ''.join(f.readlines())
                 }
             })
-        # TODO: change this to get all pngs
-        self.files.append(os.path.join(self.report_folder, 'processed_by_states.png'))
-        self.files.append(os.path.join(self.report_folder, 'processed_images_by_state.png'))
-        self.files.append(os.path.join(self.report_folder, 'processed_images_by_year.png'))
+        for file in os.listdir(self.report_folder):
+            if file.lower().endswith('.png'):
+                self.files.append(os.path.join(self.report_folder, file))
+
 
     def send_slack_notification(self):
         client = WebClient(token=self.__auth_config_data['slack_api_token'])
@@ -104,7 +110,9 @@ class Report:
         except SlackApiError as e:
             print(f"Error: {e}")
 
-    def generate_graphs(self, csv_file):
+    def generate_developed_batch_graphs(self, csv_file):
+        type = csv_file.split("_")[-1].replace('.csv', '')
+
         def split_field(row):
             parts = row['batch'].split('_')
             return pd.Series({'state': parts[0], 'date': parts[1]})
@@ -118,39 +126,45 @@ class Report:
         # processed/unprocessed high level stats
         plot_data = pd.crosstab(df['state'], df['UnProcessed'])
         ax = plot_data.plot(kind='bar', stacked=False, figsize=(10, 6))
-        plt.title('Patterns of UnProcessed True/False by State')
+        plt.title(f'Patterns of UnProcessed True/False by State - {type}')
         plt.xlabel('State')
         plt.ylabel('Count')
         plt.legend(title='UnProcessed')
         plt.tight_layout()
-        plt.savefig(os.path.join(self.report_folder,'processed_by_states.png'), dpi=300)
+        plt.savefig(os.path.join(self.report_folder,f'processed_by_states_{type}.png'), dpi=300)
 
         # processed image count by state
         plt.figure(figsize=(10, 5))
         processed_images_by_state.plot(kind='bar', color='skyblue')
-        plt.title('Number of Processed Images by State')
+        plt.title(f'Number of Processed Images by State - {type}')
         plt.xlabel('State')
         plt.ylabel('Number of Processed Images')
         plt.xticks(rotation=0)
         plt.tight_layout()
-        plt.savefig(os.path.join(self.report_folder,'processed_images_by_state.png'), dpi=300)
+        plt.savefig(os.path.join(self.report_folder,f'processed_images_by_state_{type}.png'), dpi=300)
 
         # processed image count by year
         plt.figure(figsize=(10, 5))
         processed_images_by_year.plot(kind='bar', color='skyblue')
-        plt.title('Number of Processed Images by Year')
+        plt.title(f'Number of Processed Images by Year - {type}')
         plt.xlabel('Year')
         plt.ylabel('Number of Processed Images')
         plt.xticks(rotation=0)
         plt.tight_layout()
-        plt.savefig(os.path.join(self.report_folder,'processed_images_by_year.png'), dpi=300)
+        plt.savefig(os.path.join(self.report_folder,f'processed_images_by_year_{type}.png'), dpi=300)
 
         return
+    
 
 def main(cfg: DictConfig) -> None:
     """Main function to execute report generation and sending it to slack."""
     report = Report(cfg)
+
+    report.copy_relevant_files()
+    report.generate_developed_batch_graphs(os.path.join(report.report_folder, 'semif_developed_batch_details_az.csv'))
+    report.generate_developed_batch_graphs(os.path.join(report.report_folder, 'semif_developed_batch_details_lts.csv'))
     log.info('generating report')
+
     report.compose_slack_message()
     log.info('sending slack notification')
     report.send_slack_notification()
