@@ -426,7 +426,8 @@ class BatchReport:
             Save the report to a CSV file with a timestamp.
             """
             df = self.create_dataframe(batch_details)
-            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+            # timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+            timestamp = datetime.now().strftime("%Y%m%d")
             csv_save_dir = Path(cfg.paths.data_dir, "storage_lockers")
             csv_save_dir.mkdir(exist_ok=True, parents=True)
             csv_filename = f"{filename_prefix}_{timestamp}.csv"

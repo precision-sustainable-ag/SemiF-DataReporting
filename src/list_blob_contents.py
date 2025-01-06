@@ -269,12 +269,12 @@ class GenerateProcessedCSV():
         
         data = self._get_subfolder_details(processed_batches+unprocessed_batches)
         df = pd.DataFrame(data)
-        df.to_csv(os.path.join(self.output_dir, f'semif_developed_batch_details_{datetime.now().strftime("%Y%m%d_%H%M%S")}.csv'))
+        df.to_csv(os.path.join(self.output_dir, f'semif_developed_batch_details_{datetime.now().strftime("%Y%m%d")}.csv'))
         log.info("developed images csv written to data location")
         
         data = self._read_semif_cutouts()
         df = pd.DataFrame(data)
-        df.to_csv(os.path.join(self.output_dir, f'semif_cutouts_batch_details_{datetime.now().strftime("%Y%m%d_%H%M%S")}.csv'))
+        df.to_csv(os.path.join(self.output_dir, f'semif_cutouts_batch_details_{datetime.now().strftime("%Y%m%d")}.csv'))
         log.info("cutouts images csv written to data location")
     
     
