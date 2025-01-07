@@ -297,7 +297,7 @@ class SemifieldUploadsBatchChecker(BaseBatchChecker):
         batch_name = self.batch_path.name
         for developed_path in self.developed_batches_paths:
             if (developed_path / batch_name).exists():
-                return True, developed_path
+                return True, developed_path.parent.name
         return False, None
 
     def _get_bbot_version(self, location, date_str):

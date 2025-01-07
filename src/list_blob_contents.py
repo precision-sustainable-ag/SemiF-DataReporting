@@ -100,6 +100,7 @@ class ExporterBlobMetrics:
                 #     preprocessed_batches.append(batch_name)
                 # else:
                 #     unpreprocessed_batches.append(batch_name)
+        
         preprocessed_batches = unpreprocessed_batches
 
         developed_blob_data = {k: v for k, v in developed_blob_data.items() if k in self.task_config['batch_prefixes']}  # cleanup
@@ -136,7 +137,7 @@ class ExporterBlobMetrics:
         processed_size = az_get_batches_size(uploads_blob_data, processed_batches)
 
         batches_info = [
-            ("un-preprocessed", unpreprocessed_batches, unpreprocessed_size),
+            ("unpreprocessed", unpreprocessed_batches, unpreprocessed_size),
             ("preprocessed", preprocessed_batches, preprocessed_size),
             ("unprocessed", unprocessed_batches, unprocessed_size),
             ("processed", processed_batches, processed_size)
@@ -260,6 +261,25 @@ class GenerateProcessedCSV():
             for batch_name, details in batches.items():
                 data.append(self._get_batch_details(details))
         return data
+    
+    def _generate_semif_uploads(self, data, is_preprocessed=False):
+        output_json = []
+        for batch_data in data:
+            batch_name = batch_data['files'][0][0].split('/')[0]
+            # Count files using list comprehensions
+            arw_count = sum(1 for file in batch_data['files'] if file[0].lower().endswith('.arw'))
+            raw_count = sum(1 for file in batch_data['files'] if file[0].lower().endswith('.raw'))
+            jpg_count = sum(1 for file in batch_data['files'] if file[0].lower().endswith('.jpg'))
+            output_json.append({
+                "path": 'azure',
+                "batch": batch_name,
+                "raw_count": arw_count if arw_count else raw_count,
+                "jpg_count": jpg_count,
+                "totalSizeGiB": batch_data['total_size'],
+                "IsPreprocessed": is_preprocessed,
+                # "version": self._get_bbot_version(batch_name_splits[0], batch_name_splits[1])
+            })
+        return output_json
 
     def create_semif_csv(self):
         with open(os.path.join(self.output_dir, 'semifield-processed.jsonl'), 'r') as f:
@@ -276,6 +296,17 @@ class GenerateProcessedCSV():
         df = pd.DataFrame(data)
         df.to_csv(os.path.join(self.output_dir, f'semif_cutouts_batch_details_{datetime.now().strftime("%Y%m%d")}.csv'))
         log.info("cutouts images csv written to data location")
+
+        with open(os.path.join(self.output_dir, 'semifield-preprocessed.jsonl'), 'r') as f:
+            preprocessed_batches = [json.loads(x) for x in f.readlines()]
+        with open(os.path.join(self.output_dir, 'semifield-unpreprocessed.jsonl'), 'r') as f:
+            unpreprocessed_batches = [json.loads(x) for x in f.readlines()]
+            
+        data = self._generate_semif_uploads(preprocessed_batches, True)
+        data.extend(self._generate_semif_uploads(unpreprocessed_batches, False))
+        df = pd.DataFrame(data)
+        df.to_csv(os.path.join(self.output_dir, f'semif_upload_batch_details_{datetime.now().strftime("%Y%m%d")}.csv'))
+        log.info("uploads csv written to data location")
     
     
 

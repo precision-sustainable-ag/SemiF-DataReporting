@@ -2,6 +2,7 @@ import re
 import yaml
 import logging
 from tqdm import tqdm
+from datetime import datetime
 
 log = logging.getLogger(__name__)
 
@@ -39,7 +40,7 @@ def format_az_file_list(main_file, unprocessed_folder_list=None, processed_folde
     }
     """
     output = {}
-    size_conversion = {"B": 1/1024/2024, "KiB": 1/1024, "MiB": 1, "GiB": 1024}
+    size_conversion = {"B": 1/1024**3, "KiB": 1/1024**2, "MiB": 1/1024, "GiB": 1}
 
     filelines =  open(main_file, 'r').readlines()
     for line in filelines:
@@ -65,50 +66,53 @@ def format_az_file_list(main_file, unprocessed_folder_list=None, processed_folde
             # try catch block to handle and ignore cases like: MD-2024-04-11
             try:
                 # ignore these batches instead (if _2 exists)
-                batch_loc, batch_date = path_splits[0].split('_')[:2] # [:2] added to handle cases like TX_2023-09-11_2
-                if not batch_loc in output:
-                    output[batch_loc] = {
-                        f"{batch_loc}_{batch_date}": {
-                            'files': [(filename, filesize)],
+                path_split = path_splits[0].split('_')
+                if len(path_split) == 2 and bool(datetime.strptime(path_split[1], "%Y-%m-%d")):
+                    batch_loc, batch_date = path_split # [:2] added to handle cases like TX_2023-09-11_2
+                    if not batch_loc in output:
+                        output[batch_loc] = {
+                            f"{batch_loc}_{batch_date}": {
+                                'files': [(filename, filesize)],
+                                'has_processed_folders': False if not unprocessed_folder_list else True
+                            }
+                        }
+                    elif f"{batch_loc}_{batch_date}" in output[batch_loc]:
+                        output[batch_loc][f"{batch_loc}_{batch_date}"]['files'].append((filename,filesize))
+                        # if not output[batch_loc][batch_date]['processed'] and any(part in processed_data_folders for part in filename.split('/')):
+                        if not output[batch_loc][f"{batch_loc}_{batch_date}"]['has_processed_folders'] and unprocessed_folder_list:
+                            output[batch_loc][f"{batch_loc}_{batch_date}"]['has_processed_folders'] = True
+                    else:
+                        # batch_loc is present but batch_date is not
+                        output[batch_loc][f"{batch_loc}_{batch_date}"] = {
+                            'files':[(filename,filesize)],
                             'has_processed_folders': False if not unprocessed_folder_list else True
                         }
-                    }
-                elif f"{batch_loc}_{batch_date}" in output[batch_loc]:
-                    output[batch_loc][f"{batch_loc}_{batch_date}"]['files'].append((filename,filesize))
-                    # if not output[batch_loc][batch_date]['processed'] and any(part in processed_data_folders for part in filename.split('/')):
-                    if not output[batch_loc][f"{batch_loc}_{batch_date}"]['has_processed_folders'] and unprocessed_folder_list:
-                        output[batch_loc][f"{batch_loc}_{batch_date}"]['has_processed_folders'] = True
-                else:
-                    # batch_loc is present but batch_date is not
-                    output[batch_loc][f"{batch_loc}_{batch_date}"] = {
-                        'files':[(filename,filesize)],
-                        'has_processed_folders': False if not unprocessed_folder_list else True
-                    }
             # except Exception as e:
             #     log.warn(f"Couldn't process file: {filename}")
             finally:
                 continue
         elif any(part in unprocessed_folder_list for part in path_splits):
             try:
-                # ignore these batches instead (if _2 exists)
-                batch_loc, batch_date = path_splits[0].split('_')[:2] # [:2] added to handle cases like TX_2023-09-11_2
-                if not batch_loc in output:
-                    output[batch_loc] = {
-                        f"{batch_loc}_{batch_date}": {
-                            'files': [(filename, filesize)],
+                path_split = path_splits[0].split('_')
+                if len(path_split) == 2 and bool(datetime.strptime(path_split[1], "%Y-%m-%d")):
+                    batch_loc, batch_date = path_split # [:2] added to handle cases like TX_2023-09-11_2
+                    if not batch_loc in output:
+                        output[batch_loc] = {
+                            f"{batch_loc}_{batch_date}": {
+                                'files': [(filename, filesize)],
+                                'has_processed_folders': True if any(part in processed_folder_list for part in path_splits) else False
+                            }
+                        }
+                    elif f"{batch_loc}_{batch_date}" in output[batch_loc]:
+                        output[batch_loc][f"{batch_loc}_{batch_date}"]['files'].append((filename,filesize))
+                        if not output[batch_loc][f"{batch_loc}_{batch_date}"]['has_processed_folders'] and any(part in processed_folder_list for part in path_splits):
+                            output[batch_loc][f"{batch_loc}_{batch_date}"]['has_processed_folders'] = True
+                    else:
+                        # batch_loc is present but batch_date is not
+                        output[batch_loc][f"{batch_loc}_{batch_date}"] = {
+                            'files':[(filename,filesize)],
                             'has_processed_folders': True if any(part in processed_folder_list for part in path_splits) else False
                         }
-                    }
-                elif f"{batch_loc}_{batch_date}" in output[batch_loc]:
-                    output[batch_loc][f"{batch_loc}_{batch_date}"]['files'].append((filename,filesize))
-                    if not output[batch_loc][f"{batch_loc}_{batch_date}"]['has_processed_folders'] and any(part in processed_folder_list for part in path_splits):
-                        output[batch_loc][f"{batch_loc}_{batch_date}"]['has_processed_folders'] = True
-                else:
-                    # batch_loc is present but batch_date is not
-                    output[batch_loc][f"{batch_loc}_{batch_date}"] = {
-                        'files':[(filename,filesize)],
-                        'has_processed_folders': True if any(part in processed_folder_list for part in path_splits) else False
-                    }
             # except Exception as e:
             #     log.warn(f"Couldn't process file: {filename}")
             finally:
