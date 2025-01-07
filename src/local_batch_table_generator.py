@@ -249,6 +249,100 @@ class SemifieldDevelopedBatchChecker(BaseBatchChecker):
             log.warning(f"Ignoring invalid batch: {self.batch_path.name}")
         return None
 
+class UploadsCounter(BaseCounter):
+    def __init__(self, batch_path:Path):
+        super().__init__(batch_path)
+        self.subfolders = [item for item in batch_path.iterdir() if item.is_dir()]
+    
+    def get_subdir_size(self):
+        total_subfolder_size = 0
+        for subfolder in self.subfolders:
+            total_subfolder_size += super()._get_dir_size(subfolder)
+        return total_subfolder_size
+    
+    def get_counts(self):
+        if len(self.subfolders) == 0:
+            jpg_count: int = len(list(self.batch_path.glob('*.jpg'))) + len(list(self.batch_path.glob('*.JPG')))
+            png_count: int = len(list(self.batch_path.glob('*.png'))) + len(list(self.batch_path.glob('*.PNG')))
+            arw_count: int = len(list(self.batch_path.glob('*.arw'))) + len(list(self.batch_path.glob('*.ARW')))
+            raw_count: int = len(list(self.batch_path.glob('*.raw'))) + len(list(self.batch_path.glob('*.RAW')))
+        else:
+            jpg_count, png_count, arw_count, raw_count = 0,0,0,0
+            for subfolder in self.subfolders:
+                jpg_count += len(list(subfolder.glob('*.jpg'))) + len(list(subfolder.glob('*.JPG')))
+                png_count: int = len(list(subfolder.glob('*.png'))) + len(list(subfolder.glob('*.PNG')))
+                arw_count += len(list(subfolder.glob('*.arw'))) + len(list(subfolder.glob('*.ARW')))
+                raw_count += len(list(subfolder.glob('*.raw'))) + len(list(subfolder.glob('*.RAW')))
+        return jpg_count, png_count, arw_count, raw_count
+
+class SemifieldUploadsBatchChecker(BaseBatchChecker):
+    def __init__(self, batch_path: Path, developed_batches_paths: List[Path], bbot_versions):
+        super().__init__(batch_path)
+        # no subfolders
+        self.counter = UploadsCounter(batch_path)
+        self.developed_batches_paths = developed_batches_paths
+        self.bbot_versions = bbot_versions
+
+    # there are batches that are present in multiple lts locations
+    # currently, there are duplicate records
+    # ex: MD_2023-07-21 -- unpreprocessed
+    # MD_2023-07-07
+
+    # duplicates -> match the lts location with developed batches folder of that batch
+    # don't use png counts
+    # config has been updated with new dates for bbot versions
+    # 
+    def is_preprocessed(self) -> bool:
+        """Check if this batch exists in any of the semifield-developed paths"""
+        batch_name = self.batch_path.name
+        for developed_path in self.developed_batches_paths:
+            if (developed_path / batch_name).exists():
+                return True, developed_path
+        return False, None
+
+    def _get_bbot_version(self, location, date_str):
+        date_format = "%Y-%m-%d"
+        check_date = datetime.strptime(date_str, date_format)
+        for version, date_range in self.bbot_versions[location].items():
+            start_date = datetime.strptime(date_range[0], date_format)
+            end_date = datetime.strptime(date_range[1], date_format)
+            if start_date <= check_date <= end_date:
+                return version
+        return None
+
+    def check_batch(self) -> Optional[Dict[str, any]]:
+        if self.validator.is_valid_batch_name(self.batch_path.name):
+            log.debug(f"Valid batch found: {self.batch_path.name}")
+            
+            # images_count, metadata_count, _ = self.counter.get_subfolder_counts()
+
+            
+            is_preprocessed, developed_lts_loc = self.is_preprocessed()
+            # working with the assumption that if there are subfolders - the images are only there
+            # if subfolders are not present, total size is just outside
+            # if len(self.counter.subfolders) > 0:
+            #     total_size = self.counter.get_subdir_size()
+            # else:
+            total_size = self.counter.get_folder_size(self.batch_path)
+            jpg_count, png_count, arw_count, raw_count = self.counter.get_counts()
+            batch_name_splits = self.batch_path.name.split("_")
+            batch_info = {
+                "path": str(self.batch_path.parent.parent.name),
+                "batch": self.batch_path.name,
+                "raw_count": arw_count if arw_count else raw_count,
+                "jpg_count": jpg_count,
+                "developed_lts_loc": developed_lts_loc,
+                # "png_count": png_count,
+                "totalSizeGiB": total_size,
+                "IsPreprocessed": is_preprocessed,
+                "version": self._get_bbot_version(batch_name_splits[0], batch_name_splits[1])
+            }
+            return batch_info
+        else:
+            log.warning(f"Ignoring invalid batch: {self.batch_path.name}")
+            return None
+
+
 class SemifieldCutoutBatchChecker(BaseBatchChecker):
     def __init__(self, batch_path: Path):
         super().__init__(batch_path)
@@ -353,20 +447,26 @@ def main(cfg: DictConfig) -> None:
     """
     log.info(f"Starting local_batch_table_generator")
 
-    # Define paths for batches with subdirectories
-    paths_with_subdirectories = [
-        Path(cfg.paths.longterm_images, "semifield-developed-images"),
-        Path(cfg.paths.GROW_DATA, "semifield-developed-images"),
-    ]
+    paths_with_subdirectories, paths_without_subdirectories = [], []
+    paths_uploads = []
 
-    # Define paths for batches without subdirectories
-    paths_without_subdirectories = [
-        Path(cfg.paths.longterm_images, "semifield-cutouts"),
-        Path(cfg.paths.GROW_DATA, "semifield-cutouts"),
-    ]
+    for location in cfg.paths.lts_locations:
+        paths_with_subdirectories.append(Path(location, 'semifield-developed-images'))
+        paths_without_subdirectories.append(Path(location, 'semifield-cutouts'))
+        paths_uploads.append(Path(location, 'semifield-upload'))
+
+
+    def create_uploads_checker(batch_path: Path) -> SemifieldUploadsBatchChecker:
+        return SemifieldUploadsBatchChecker(batch_path, paths_with_subdirectories, cfg.local_batch_generator.bbot_versions)
+    
+    report = BatchReport(paths_uploads, create_uploads_checker)
+    batch_details = report.generate_report()
+    report.save_report(cfg, batch_details, "semif_upload_batch_details")
 
     # Generate and save report for batches with subdirectories
     generate_and_save_report(cfg, paths_with_subdirectories, SemifieldDevelopedBatchChecker, "semif_developed_batch_details")
 
     # Generate and save report for batches without subdirectories
     generate_and_save_report(cfg, paths_without_subdirectories, SemifieldCutoutBatchChecker, "semif_cutouts_batch_details")
+    
+    # generate_and_save_report(cfg, paths_uploads, SemifieldCutoutBatchChecker(paths_with_subdirectories), "semif_uploads_batch_details")
