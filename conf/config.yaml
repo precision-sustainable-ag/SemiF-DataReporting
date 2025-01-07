@@ -7,10 +7,8 @@ report:
   slack_channel: "#semif-datareports"
 pipeline:
   - list_blob_contents
-  # - export_blob_metrics
-  # - list_blob_contents
   # - local_batch_table_generator
-  - report
+  # - report
 #folders and their corresponding ile types that will be matched in the data directory
 matching_folders: {'images':'jpg','instance_masks':'png','semantic_masks':'png','metadata':'json'}
 

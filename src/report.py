@@ -41,6 +41,7 @@ class Report:
         
         shutil.copy2(os.path.join(blob_container_folder, 'semif-HighLevelStats.txt'), self.report_folder)
 
+        shutil.copy2(os.path.join(blob_container_folder, f'semif_upload_batch_details_{datetime.now().strftime("%Y%m%d")}.csv'), os.path.join(self.report_folder, f'semif_upload_batch_details_az.csv'))
         shutil.copy2(os.path.join(blob_container_folder, f'semif_cutouts_batch_details_{datetime.now().strftime("%Y%m%d")}.csv'), os.path.join(self.report_folder, f'semif_cutouts_batch_details_az.csv'))
         shutil.copy2(os.path.join(blob_container_folder, f'semif_developed_batch_details_{datetime.now().strftime("%Y%m%d")}.csv'), os.path.join(self.report_folder, f'semif_developed_batch_details_az.csv'))
 
@@ -155,6 +156,23 @@ class Report:
 
         return
     
+    def _cleanup_lts_uploads_csv(self):
+        df = pd.read_csv(os.path.join(self.report_folder, 'semif_uploads_batch_details_lts.csv'))
+        duplicates = df[df.duplicated('batch', keep=False)]
+        filtered_duplicates = duplicates[duplicates['path'] == duplicates['developed_lts_loc']]
+        non_duplicates = df[~df.duplicated('batch', keep=False)]
+        result = pd.concat([non_duplicates, filtered_duplicates]).sort_index()
+        # cleanup + compare with azure records 
+        empty_batches = result.loc[((result.raw_count == 0) | (result.totalSizeGiB == 0))]['batch'].tolist()
+        az_df = pd.read_csv(os.path.join(self.report_folder, 'semif_uploads_batch_details_az.csv'))
+        for batch in empty_batches:
+            matching_row = az_df[az_df['batch'] == batch]
+            if not matching_row.empty:
+                result.loc[result['batch'] == batch, ['path', 'raw_count', 'jpg_count', 'totalSizeGiB']] = \
+                    matching_row[['path', 'raw_count', 'jpg_count', 'totalSizeGiB']].values
+        result.to_csv(os.path.join(self.report_folder, 'semif_uploads_batch_details_lts.csv'), index=False)
+        
+        
 
 def main(cfg: DictConfig) -> None:
     """Main function to execute report generation and sending it to slack."""
