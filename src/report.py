@@ -157,6 +157,10 @@ class Report:
     #     return
     
     def _cleanup_lts_uploads_csv(self):
+        # for duplicate batches (present in multiple lts locations - longterm_storage, GROW_DATA) 
+        #     keep records where lts location matches for uploads and developed images
+        # for records where some details are missing - raw_count or total_size
+        #       get details from azure and update the records
         df = pd.read_csv(os.path.join(self.report_folder, 'semif_upload_batch_details_lts.csv'))
         duplicates = df[df.duplicated('batch', keep=False)]
         filtered_duplicates = duplicates[duplicates['path'] == duplicates['developed_lts_loc']]
@@ -172,6 +176,15 @@ class Report:
                 result.loc[result['batch'] == batch, ['path', 'raw_count', 'jpg_count', 'totalSizeGiB']] = \
                     matching_row[['path', 'raw_count', 'jpg_count', 'totalSizeGiB']].values
         result.to_csv(os.path.join(self.report_folder, 'semif_upload_batch_details_lts.csv'), index=False)
+    
+    def _combine_uploads_csv(self, lts_uploads_df, az_uploads_df):
+        # merges all records into one csv, removes three empty batches 
+        # NC_2022-10-21, NC_2022-11-04, MD_2022-09-14
+        combined_df = pd.merge(lts_uploads_df, az_uploads_df, on='batch', how='outer', suffixes=('_lts', '_az'))
+        combined_df[~combined_df['batch'].isin(
+            lts_uploads_df[((lts_uploads_df.raw_count == 0) & 
+                            (lts_uploads_df.jpg_count == 0))]['batch'].tolist())]
+        return combined_df
 
     def _cleanup_developed_duplicates(self, lts_developed_df, az_developed_df):
         # take duplicate batches (present in multiple locations) in lts location
@@ -210,19 +223,52 @@ class Report:
 
 
     def generate_actionable_table(self):
-        self._cleanup_lts_uploads_csv()
         # current implementation ignores duplicates, also has extra variable declarations
         # optimize + update implementation later
-        uploads_df = pd.read_csv(os.path.join(self.report_folder, 'semif_upload_batch_details_lts.csv'))
+
+        self._cleanup_lts_uploads_csv()
+        lts_uploads_df = pd.read_csv(os.path.join(self.report_folder, 'semif_upload_batch_details_lts.csv'))
+        az_uploads_df = pd.read_csv(os.path.join(self.report_folder, 'semif_upload_batch_details_az.csv'))
+        uploads_df = self._combine_uploads_csv(lts_uploads_df, az_uploads_df)
+
         az_developed_df = pd.read_csv(os.path.join(self.report_folder, 'semif_developed_batch_details_az.csv'), index_col=0)
         lts_developed_df = pd.read_csv(os.path.join(self.report_folder, 'semif_developed_batch_details_lts.csv'))
+        developed_df, lts_developed_duplicated_batches = self._cleanup_developed_duplicates(lts_developed_df, az_developed_df)
+
         az_cutouts_df = pd.read_csv(os.path.join(self.report_folder, 'semif_cutouts_batch_details_az.csv'), index_col=0)
         lts_cutouts_df = pd.read_csv(os.path.join(self.report_folder, 'semif_cutouts_batch_details_lts.csv'))
-        
-        developed_df, lts_developed_duplicated_batches = self._cleanup_developed_duplicates(lts_developed_df, az_developed_df)
         cutouts_df, lts_cutouts_duplicated_batches = self._cleanup_cutouts_duplicates(lts_cutouts_df, az_cutouts_df)
+
+        records = []
+        for _, row in uploads_df.iterrows():
+            name_splits = row['batch'].split("_")
+            if row['path_lts']:
+                if row['path_lts'] != 'azure':
+                    upload_lts = True
+                else:
+                    upload_lts = False
+            else:
+               upload_lts = False
+            
+            
+            records.append({
+               "batch": row['batch'],
+               "developed_lts": False,
+               "developed_azure": False,
+               "preprocessed": row['IsPreprocessed_lts'] if row['IsPreprocessed_lts'] is not None else row['IsPreprocessed_az'],
+               "processed": False,
+               "state": name_splits[0],
+               "date": name_splits[1],
+               "developed_jpgs": 0,
+               "upload_raws": row['raw_count_lts'] if row['path_lts'] else row['raw_count_az'],
+               "upload_lts": upload_lts,
+               "upload_azure": True if row['path_az'] else False,
+               "cutouts_lts": None,
+               "cutouts_azure": None,
+               "bbot_version": row['version']
+            })
         
-        
+        pd.DataFrame(records).to_csv(os.path.join(self.report_folder, f"actionable_items_{datetime.now().strftime("%Y%m%d")}.csv"))
 
 
         
@@ -232,11 +278,13 @@ def main(cfg: DictConfig) -> None:
     report = Report(cfg)
 
     report.copy_relevant_files()
+    report.generate_actionable_table()
+
     # report._cleanup_lts_uploads_csv()
     # report.generate_developed_batch_graphs(os.path.join(report.report_folder, 'semif_developed_batch_details_az.csv'))
     # report.generate_developed_batch_graphs(os.path.join(report.report_folder, 'semif_developed_batch_details_lts.csv'))
-    log.info('generating report')
+    # log.info('generating report')
 
-    report.compose_slack_message()
-    log.info('sending slack notification')
-    report.send_slack_notification()
+    # report.compose_slack_message()
+    # log.info('sending slack notification')
+    # report.send_slack_notification()
