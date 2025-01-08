@@ -111,67 +111,120 @@ class Report:
         except SlackApiError as e:
             print(f"Error: {e}")
 
-    def generate_developed_batch_graphs(self, csv_file):
-        type = csv_file.split("_")[-1].replace('.csv', '')
+    # def generate_developed_batch_graphs(self, csv_file):
+    #     type = csv_file.split("_")[-1].replace('.csv', '')
 
-        def split_field(row):
-            parts = row['batch'].split('_')
-            return pd.Series({'state': parts[0], 'date': parts[1]})
+    #     def split_field(row):
+    #         parts = row['batch'].split('_')
+    #         return pd.Series({'state': parts[0], 'date': parts[1]})
         
-        df = pd.read_csv(csv_file, index_col=0)
-        df[['state', 'date']] = df.apply(split_field, axis=1)
-        df['year'] = pd.to_datetime(df['date']).dt.year
-        processed_images_by_state = df[df['UnProcessed'] == False].groupby('state')['images'].sum()
-        processed_images_by_year = df[df['UnProcessed'] == False].groupby('year')['images'].sum()
+    #     df = pd.read_csv(csv_file, index_col=0)
+    #     df[['state', 'date']] = df.apply(split_field, axis=1)
+    #     df['year'] = pd.to_datetime(df['date']).dt.year
+    #     processed_images_by_state = df[df['UnProcessed'] == False].groupby('state')['images'].sum()
+    #     processed_images_by_year = df[df['UnProcessed'] == False].groupby('year')['images'].sum()
         
-        # processed/unprocessed high level stats
-        plot_data = pd.crosstab(df['state'], df['UnProcessed'])
-        ax = plot_data.plot(kind='bar', stacked=False, figsize=(10, 6))
-        plt.title(f'Patterns of UnProcessed True/False by State - {type}')
-        plt.xlabel('State')
-        plt.ylabel('Count')
-        plt.legend(title='UnProcessed')
-        plt.tight_layout()
-        plt.savefig(os.path.join(self.report_folder,f'processed_by_states_{type}.png'), dpi=300)
+    #     # processed/unprocessed high level stats
+    #     plot_data = pd.crosstab(df['state'], df['UnProcessed'])
+    #     ax = plot_data.plot(kind='bar', stacked=False, figsize=(10, 6))
+    #     plt.title(f'Patterns of UnProcessed True/False by State - {type}')
+    #     plt.xlabel('State')
+    #     plt.ylabel('Count')
+    #     plt.legend(title='UnProcessed')
+    #     plt.tight_layout()
+    #     plt.savefig(os.path.join(self.report_folder,f'processed_by_states_{type}.png'), dpi=300)
 
-        # processed image count by state
-        plt.figure(figsize=(10, 5))
-        processed_images_by_state.plot(kind='bar', color='skyblue')
-        plt.title(f'Number of Processed Images by State - {type}')
-        plt.xlabel('State')
-        plt.ylabel('Number of Processed Images')
-        plt.xticks(rotation=0)
-        plt.tight_layout()
-        plt.savefig(os.path.join(self.report_folder,f'processed_images_by_state_{type}.png'), dpi=300)
+    #     # processed image count by state
+    #     plt.figure(figsize=(10, 5))
+    #     processed_images_by_state.plot(kind='bar', color='skyblue')
+    #     plt.title(f'Number of Processed Images by State - {type}')
+    #     plt.xlabel('State')
+    #     plt.ylabel('Number of Processed Images')
+    #     plt.xticks(rotation=0)
+    #     plt.tight_layout()
+    #     plt.savefig(os.path.join(self.report_folder,f'processed_images_by_state_{type}.png'), dpi=300)
 
-        # processed image count by year
-        plt.figure(figsize=(10, 5))
-        processed_images_by_year.plot(kind='bar', color='skyblue')
-        plt.title(f'Number of Processed Images by Year - {type}')
-        plt.xlabel('Year')
-        plt.ylabel('Number of Processed Images')
-        plt.xticks(rotation=0)
-        plt.tight_layout()
-        plt.savefig(os.path.join(self.report_folder,f'processed_images_by_year_{type}.png'), dpi=300)
+    #     # processed image count by year
+    #     plt.figure(figsize=(10, 5))
+    #     processed_images_by_year.plot(kind='bar', color='skyblue')
+    #     plt.title(f'Number of Processed Images by Year - {type}')
+    #     plt.xlabel('Year')
+    #     plt.ylabel('Number of Processed Images')
+    #     plt.xticks(rotation=0)
+    #     plt.tight_layout()
+    #     plt.savefig(os.path.join(self.report_folder,f'processed_images_by_year_{type}.png'), dpi=300)
 
-        return
+    #     return
     
     def _cleanup_lts_uploads_csv(self):
-        df = pd.read_csv(os.path.join(self.report_folder, 'semif_uploads_batch_details_lts.csv'))
+        df = pd.read_csv(os.path.join(self.report_folder, 'semif_upload_batch_details_lts.csv'))
         duplicates = df[df.duplicated('batch', keep=False)]
         filtered_duplicates = duplicates[duplicates['path'] == duplicates['developed_lts_loc']]
         non_duplicates = df[~df.duplicated('batch', keep=False)]
         result = pd.concat([non_duplicates, filtered_duplicates]).sort_index()
-        # cleanup + compare with azure records 
+        
+        # cleanup + compare with azure records - still leaves a few empty batches
         empty_batches = result.loc[((result.raw_count == 0) | (result.totalSizeGiB == 0))]['batch'].tolist()
-        az_df = pd.read_csv(os.path.join(self.report_folder, 'semif_uploads_batch_details_az.csv'))
+        az_df = pd.read_csv(os.path.join(self.report_folder, 'semif_upload_batch_details_az.csv'))
         for batch in empty_batches:
             matching_row = az_df[az_df['batch'] == batch]
             if not matching_row.empty:
                 result.loc[result['batch'] == batch, ['path', 'raw_count', 'jpg_count', 'totalSizeGiB']] = \
                     matching_row[['path', 'raw_count', 'jpg_count', 'totalSizeGiB']].values
-        result.to_csv(os.path.join(self.report_folder, 'semif_uploads_batch_details_lts.csv'), index=False)
+        result.to_csv(os.path.join(self.report_folder, 'semif_upload_batch_details_lts.csv'), index=False)
+
+    def _cleanup_developed_duplicates(self, lts_developed_df, az_developed_df):
+        # take duplicate batches (present in multiple locations) in lts location
+        # remove them from consideration
+        # join lts and az developed data
+        # return combined df and list of duplicates
+        lts_developed_duplicated_batches = lts_developed_df[lts_developed_df['batch'].duplicated()]['batch'].tolist()
         
+        lts_developed_df = lts_developed_df[~lts_developed_df['batch'].isin(lts_developed_duplicated_batches)]
+        az_developed_df = az_developed_df[az_developed_df['batch'].isin(lts_developed_duplicated_batches)]
+        combined_developed_df = pd.merge(lts_developed_df, az_developed_df, on='batch', how='outer', suffixes=('_lts', '_az'))
+
+        # remove empty batch records (according to LTS) 
+        # also means az records for those batches are empty
+        combined_developed_df = combined_developed_df[~combined_developed_df['batch'].isin(
+            lts_developed_df[((lts_developed_df.images == 0) & 
+                            (lts_developed_df.metadata == 0) & 
+                            (lts_developed_df.meta_masks == 0))]['batch'].tolist())]
+
+        return combined_developed_df, lts_developed_duplicated_batches
+    
+    def _cleanup_cutouts_duplicates(self, lts_cutouts_df, az_cutouts_df):
+        # same as above - takes care of one batch as of now
+        lts_cutouts_duplicated_batches = lts_cutouts_df[lts_cutouts_df['batch'].duplicated()]['batch'].tolist()
+
+        lts_cutouts_df = lts_cutouts_df[~lts_cutouts_df['batch'].isin(lts_cutouts_duplicated_batches)]
+        az_cutouts_df = az_cutouts_df[~az_cutouts_df['batch'].isin(lts_cutouts_duplicated_batches)]
+        combined_df = pd.merge(lts_cutouts_df, az_cutouts_df, on='batch', how='outer', suffixes=('_lts', '_az'))
+        combined_cutouts_df = combined_df[~combined_df['batch'].isin(
+            lts_cutouts_df[((lts_cutouts_df.jpg_count == 0) & 
+                            (lts_cutouts_df.png_count == 0) & 
+                            (lts_cutouts_df.json_count == 0) & 
+                            (lts_cutouts_df.mask_count == 0))]['batch'].tolist())]
+        return combined_cutouts_df, lts_cutouts_duplicated_batches
+    
+
+
+    def generate_actionable_table(self):
+        self._cleanup_lts_uploads_csv()
+        # current implementation ignores duplicates, also has extra variable declarations
+        # optimize + update implementation later
+        uploads_df = pd.read_csv(os.path.join(self.report_folder, 'semif_upload_batch_details_lts.csv'))
+        az_developed_df = pd.read_csv(os.path.join(self.report_folder, 'semif_developed_batch_details_az.csv'), index_col=0)
+        lts_developed_df = pd.read_csv(os.path.join(self.report_folder, 'semif_developed_batch_details_lts.csv'))
+        az_cutouts_df = pd.read_csv(os.path.join(self.report_folder, 'semif_cutouts_batch_details_az.csv'), index_col=0)
+        lts_cutouts_df = pd.read_csv(os.path.join(self.report_folder, 'semif_cutouts_batch_details_lts.csv'))
+        
+        developed_df, lts_developed_duplicated_batches = self._cleanup_developed_duplicates(lts_developed_df, az_developed_df)
+        cutouts_df, lts_cutouts_duplicated_batches = self._cleanup_cutouts_duplicates(lts_cutouts_df, az_cutouts_df)
+        
+        
+
+
         
 
 def main(cfg: DictConfig) -> None:
@@ -179,8 +232,9 @@ def main(cfg: DictConfig) -> None:
     report = Report(cfg)
 
     report.copy_relevant_files()
-    report.generate_developed_batch_graphs(os.path.join(report.report_folder, 'semif_developed_batch_details_az.csv'))
-    report.generate_developed_batch_graphs(os.path.join(report.report_folder, 'semif_developed_batch_details_lts.csv'))
+    # report._cleanup_lts_uploads_csv()
+    # report.generate_developed_batch_graphs(os.path.join(report.report_folder, 'semif_developed_batch_details_az.csv'))
+    # report.generate_developed_batch_graphs(os.path.join(report.report_folder, 'semif_developed_batch_details_lts.csv'))
     log.info('generating report')
 
     report.compose_slack_message()
