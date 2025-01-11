@@ -240,19 +240,47 @@ class Report:
         combined_df = combined_df.replace(np.nan, None)
         return combined_df
 
+    def _developed_deduplication_logic(self, group):
+        # logic - whichever path has max sum of (images+metadata+meta_masks)
+        # is kept
+        if len(group) == 2:
+            return group.loc[(group[['images', 'metadata', 'meta_masks']].sum(
+                axis=1)).idxmax()]
+        elif len(group) > 2:
+            log.info(f"{group['batch'].tolist()[0]} -developed - has more "
+                     f"than 2 duplicates")
+            return None
+
     def _cleanup_developed_duplicates(self, lts_developed_df, az_developed_df):
         # take duplicate batches (present in multiple locations) in lts location
-        # remove them from consideration
+        # remove one of the two from consideration
         # join lts and az developed data
         # return combined df and list of duplicates
         lts_developed_duplicated_batches = \
             lts_developed_df[lts_developed_df['batch'].duplicated()][
                 'batch'].tolist()
 
-        lts_developed_df = lts_developed_df[
-            ~lts_developed_df['batch'].isin(lts_developed_duplicated_batches)]
-        az_developed_df = az_developed_df[
-            az_developed_df['batch'].isin(lts_developed_duplicated_batches)]
+        # duplicate records saved separately
+        lts_developed_duplicates = lts_developed_df[
+            lts_developed_df['batch'].isin(lts_developed_duplicated_batches)]
+
+        # deduplicate batch records using _developed_deduplication_logic
+        # merge with other records -> lts_developed_df
+        cleaned_lts_duplicates_df = lts_developed_df.groupby('batch',
+                                                             as_index=False).apply(
+            self._developed_deduplication_logic).reset_index(drop=True)
+        lts_developed_df = pd.concat([lts_developed_df[
+                                          ~lts_developed_df['batch'].duplicated(
+                                              keep=False)],
+                                      cleaned_lts_duplicates_df
+                                      ]).drop_duplicates().reset_index(
+            drop=True)
+        # az doesn't have the duplicate records
+        # lts_developed_df = lts_developed_df[
+        #     ~lts_developed_df['batch'].isin(lts_developed_duplicated_batches)]
+        # az_developed_df = az_developed_df[
+        #     az_developed_df['batch'].isin(lts_developed_duplicated_batches)]
+
         combined_developed_df = pd.merge(lts_developed_df, az_developed_df,
                                          on='batch', how='outer',
                                          suffixes=('_lts', '_az'))
@@ -266,7 +294,7 @@ class Report:
                                   (lts_developed_df.meta_masks == 0))][
                     'batch'].tolist())]
         combined_developed_df = combined_developed_df.replace(np.nan, None)
-        return combined_developed_df, lts_developed_duplicated_batches
+        return combined_developed_df, lts_developed_duplicates, lts_developed_duplicated_batches
 
     def _cleanup_cutouts_duplicates(self, lts_cutouts_df, az_cutouts_df):
         # same as above - takes care of one batch as of now
@@ -335,25 +363,27 @@ class Report:
 
         self._cleanup_lts_uploads_csv()
         lts_uploads_df = pd.read_csv(os.path.join(self.report_folder,
-                                                  'semif_upload_batch_details_lts.csv'))
+                                                  'semif_upload_batch_details_lts.csv'))  # nopep8
         az_uploads_df = pd.read_csv(os.path.join(self.report_folder,
-                                                 'semif_upload_batch_details_az.csv'))
+                                                 'semif_upload_batch_details_az.csv'))  # nopep8
         uploads_df = self._combine_uploads_csv(lts_uploads_df, az_uploads_df)
 
         az_developed_df = pd.read_csv(os.path.join(self.report_folder,
-                                                   'semif_developed_batch_details_az.csv'),
+                                                   'semif_developed_batch_details_az.csv'),  # nopep8
                                       index_col=0)
         lts_developed_df = pd.read_csv(os.path.join(self.report_folder,
-                                                    'semif_developed_batch_details_lts.csv'))
-        developed_df, lts_developed_duplicated_batches = self._cleanup_developed_duplicates(
+                                                    'semif_developed_batch_details_lts.csv'))  # nopep8
+        developed_df, lts_developed_duplicates_df, lts_developed_duplicated_batches = self._cleanup_developed_duplicates(  # nopep8
             lts_developed_df, az_developed_df)
 
+        lts_developed_duplicates_df.to_csv(os.path.join(self.report_folder,
+                                                        'semif_developed_duplicates_lts.csv'))  # nopep8
         az_cutouts_df = pd.read_csv(os.path.join(self.report_folder,
-                                                 'semif_cutouts_batch_details_az.csv'),
+                                                 'semif_cutouts_batch_details_az.csv'),  # nopep8
                                     index_col=0)
         lts_cutouts_df = pd.read_csv(os.path.join(self.report_folder,
-                                                  'semif_cutouts_batch_details_lts.csv'))
-        cutouts_df, lts_cutouts_duplicated_batches = self._cleanup_cutouts_duplicates(
+                                                  'semif_cutouts_batch_details_lts.csv'))  # nopep8
+        cutouts_df, lts_cutouts_duplicated_batches = self._cleanup_cutouts_duplicates(  # nopep8
             lts_cutouts_df, az_cutouts_df)
 
         # do we take upload_raws, developed_jpgs, ..
@@ -462,8 +492,10 @@ class Report:
                         "bbot_version": None
                     }
         records = [v for k, v in records.items()]
+        # pd.DataFrame(records).to_csv(
+        #     os.path.join(self.report_folder, f"actionable_items.csv"))
         pd.DataFrame(records).to_csv(
-            os.path.join(self.report_folder, f"actionable_items.csv"))
+            os.path.join(self.report_folder, f"batch_details.csv"))
 
         self._generate_summary_stats(uploads_df, developed_df, cutouts_df)
         # TODO: deal with duplicate records
