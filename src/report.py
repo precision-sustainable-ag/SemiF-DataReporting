@@ -23,19 +23,6 @@ class Report:
         self.parent_report_folder = cfg.paths.report
         self.report_folder = None
         self.summary_stats = {}
-        # self.message_blocks = [
-        #     {
-        #         'type': 'section',
-        #         'text': {
-        #             'type': 'mrkdwn',
-        #             'text': f"*Data Report* - {datetime.now().strftime('%m/%d/%Y')}"
-        #         }
-        #     },
-        #     {
-        #         'type': 'divider'
-        #     }
-        # ]
-        # self.files = []
 
     def copy_relevant_files(self):
         # get relevant blobcontainers files
@@ -146,56 +133,8 @@ class Report:
                     # initial_comment="Here's the attached file",
                     thread_ts=message_response['ts'],
                 )
-            # print("response 2: ", file_response)
-            # if response["ok"]:
-            #     print("Message sent successfully")
         except SlackApiError as e:
             print(f"Error: {e}")
-
-    # def generate_developed_batch_graphs(self, csv_file):
-    #     type = csv_file.split("_")[-1].replace('.csv', '')
-
-    #     def split_field(row):
-    #         parts = row['batch'].split('_')
-    #         return pd.Series({'state': parts[0], 'date': parts[1]})
-
-    #     df = pd.read_csv(csv_file, index_col=0)
-    #     df[['state', 'date']] = df.apply(split_field, axis=1)
-    #     df['year'] = pd.to_datetime(df['date']).dt.year
-    #     processed_images_by_state = df[df['UnProcessed'] == False].groupby('state')['images'].sum()
-    #     processed_images_by_year = df[df['UnProcessed'] == False].groupby('year')['images'].sum()
-
-    #     # processed/unprocessed high level stats
-    #     plot_data = pd.crosstab(df['state'], df['UnProcessed'])
-    #     ax = plot_data.plot(kind='bar', stacked=False, figsize=(10, 6))
-    #     plt.title(f'Patterns of UnProcessed True/False by State - {type}')
-    #     plt.xlabel('State')
-    #     plt.ylabel('Count')
-    #     plt.legend(title='UnProcessed')
-    #     plt.tight_layout()
-    #     plt.savefig(os.path.join(self.report_folder,f'processed_by_states_{type}.png'), dpi=300)
-
-    #     # processed image count by state
-    #     plt.figure(figsize=(10, 5))
-    #     processed_images_by_state.plot(kind='bar', color='skyblue')
-    #     plt.title(f'Number of Processed Images by State - {type}')
-    #     plt.xlabel('State')
-    #     plt.ylabel('Number of Processed Images')
-    #     plt.xticks(rotation=0)
-    #     plt.tight_layout()
-    #     plt.savefig(os.path.join(self.report_folder,f'processed_images_by_state_{type}.png'), dpi=300)
-
-    #     # processed image count by year
-    #     plt.figure(figsize=(10, 5))
-    #     processed_images_by_year.plot(kind='bar', color='skyblue')
-    #     plt.title(f'Number of Processed Images by Year - {type}')
-    #     plt.xlabel('Year')
-    #     plt.ylabel('Number of Processed Images')
-    #     plt.xticks(rotation=0)
-    #     plt.tight_layout()
-    #     plt.savefig(os.path.join(self.report_folder,f'processed_images_by_year_{type}.png'), dpi=300)
-
-    #     return
 
     def _cleanup_lts_uploads_csv(self):
         # for duplicate batches (present in multiple lts locations - longterm_storage, GROW_DATA) 
@@ -294,6 +233,7 @@ class Report:
                                   (lts_developed_df.meta_masks == 0))][
                     'batch'].tolist())]
         combined_developed_df = combined_developed_df.replace(np.nan, None)
+        combined_developed_df.dropna(how='all', inplace=True)
         return combined_developed_df, lts_developed_duplicates, lts_developed_duplicated_batches
 
     def _cleanup_cutouts_duplicates(self, lts_cutouts_df, az_cutouts_df):
@@ -321,7 +261,7 @@ class Report:
 
     def _generate_summary_stats(self, uploads_df, developed_df, cutouts_df):
         actionable_df = pd.read_csv(os.path.join(self.report_folder,
-                                                 'actionable_items.csv'),
+                                                 'batch_details.csv'),
                                     index_col=0)
         processed_counts = pd.crosstab(actionable_df['state'],
                                        actionable_df['processed'])
@@ -369,104 +309,102 @@ class Report:
         uploads_df = self._combine_uploads_csv(lts_uploads_df, az_uploads_df)
 
         az_developed_df = pd.read_csv(os.path.join(self.report_folder,
-                                                   'semif_developed_batch_details_az.csv'),  # nopep8
+                                                   'semif_developed_batch_details_az.csv'),
                                       index_col=0)
         lts_developed_df = pd.read_csv(os.path.join(self.report_folder,
                                                     'semif_developed_batch_details_lts.csv'))  # nopep8
-        developed_df, lts_developed_duplicates_df, lts_developed_duplicated_batches = self._cleanup_developed_duplicates(  # nopep8
+        developed_df, lts_developed_duplicates_df, lts_developed_duplicated_batches = self._cleanup_developed_duplicates(
             lts_developed_df, az_developed_df)
 
+        # save duplicates for developed
         lts_developed_duplicates_df.to_csv(os.path.join(self.report_folder,
                                                         'semif_developed_duplicates_lts.csv'))  # nopep8
         az_cutouts_df = pd.read_csv(os.path.join(self.report_folder,
-                                                 'semif_cutouts_batch_details_az.csv'),  # nopep8
+                                                 'semif_cutouts_batch_details_az.csv'),
                                     index_col=0)
         lts_cutouts_df = pd.read_csv(os.path.join(self.report_folder,
                                                   'semif_cutouts_batch_details_lts.csv'))  # nopep8
-        cutouts_df, lts_cutouts_duplicated_batches = self._cleanup_cutouts_duplicates(  # nopep8
+        cutouts_df, lts_cutouts_duplicated_batches = self._cleanup_cutouts_duplicates(
             lts_cutouts_df, az_cutouts_df)
 
         # do we take upload_raws, developed_jpgs, ..
         # from azure if that detail is not present in lts?
         records = {}
         for _, row in uploads_df.iterrows():
-            if row['batch'] not in lts_developed_duplicated_batches and \
-                    row['batch'] not in lts_cutouts_duplicated_batches:
-                name_splits = row['batch'].split("_")
-                # since _cleanup is done by taking batch details from azure
-                # (where lts is empty), it means these batches are in az but not
-                # in lts
-                if row['path_lts']:
-                    if row['path_lts'] != 'azure':
-                        upload_lts = True
-                    else:
-                        upload_lts = False
+            name_splits = row['batch'].split("_")
+            # since _cleanup is done by taking batch details from azure
+            # (where lts is empty), it means these batches are in az but not
+            # in lts
+            if row['path_lts']:
+                if row['path_lts'] != 'azure':
+                    upload_lts = True
                 else:
                     upload_lts = False
+            else:
+                upload_lts = False
 
-                records[row['batch']] = {
-                    "batch": row['batch'],
-                    "developed_lts": False,
-                    "developed_azure": False,
-                    "preprocessed": row['IsPreprocessed_lts']
-                    if row['IsPreprocessed_lts'] is not None
-                    else row['IsPreprocessed_az'],
-                    "processed": False,
-                    "state": name_splits[0],
-                    "date": name_splits[1],
-                    "developed_jpgs": None,
-                    "upload_raws": row['raw_count_lts'] if row['path_lts']
-                    else row['raw_count_az'],
-                    "upload_lts": upload_lts,
-                    "upload_azure": True if row['path_az'] else False,
-                    "cutouts_lts": None,
-                    "cutouts_azure": None,
-                    "bbot_version": row['version']
-                }
+            records[row['batch']] = {
+                "batch": row['batch'],
+                "developed_lts": False,
+                "developed_azure": False,
+                "preprocessed": row['IsPreprocessed_lts']
+                if row['IsPreprocessed_lts'] is not None
+                else row['IsPreprocessed_az'],
+                "processed": False,
+                "state": name_splits[0],
+                "date": name_splits[1],
+                "developed_jpgs": None,
+                "upload_raws": row['raw_count_lts'] if row['path_lts']
+                else row['raw_count_az'],
+                "upload_lts": upload_lts,
+                "upload_azure": True if row['path_az'] else False,
+                "cutouts_lts": None,
+                "cutouts_azure": None,
+                "bbot_version": row['version']
+            }
         upload_lts = None
 
         for _, row in developed_df.iterrows():
-            if row['batch'] not in lts_developed_duplicated_batches \
-                    and row['batch'] not in lts_cutouts_duplicated_batches:
-                if row['batch'] in records:
-                    records[row['batch']]['developed_lts'] = True if row[
-                        'path_lts'] else False
-                    records[row['batch']]['developed_azure'] = True if row[
-                        'path_az'] else False
-                    records[row['batch']]['processed'] = not \
-                        row['UnProcessed_lts'] if row[
-                                                      'UnProcessed_lts'] is not None \
-                        else not row['UnProcessed_az']
-                    records[row['batch']]['developed_jpgs'] = row[
-                        'images_lts'] if \
-                        row['images_lts'] else row['images_az']
-                else:
-                    log.info(
-                        f"{row['batch']} - developed found, upload missing")
-                    name_splits = row['batch'].split("_")
-                    records[row['batch']] = {
-                        "batch": row['batch'],
-                        "developed_lts": True if row['path_lts'] else False,
-                        "developed_azure": True if row['path_az'] else False,
-                        "preprocessed": None,
-                        "processed": not row['UnProcessed_lts'] if
-                        row['UnProcessed_lts'] is not None
-                        else not row['UnProcessed_az'],
-                        "state": name_splits[0],
-                        "date": name_splits[1],
-                        "developed_jpgs": row['images_lts'] if row['images_lts']
-                        else row['images_az'],
-                        "upload_raws": None,
-                        "upload_lts": None,
-                        "upload_azure": None,
-                        "cutouts_lts": None,
-                        "cutouts_azure": None,
-                        "bbot_version": None
-                    }
+            if row['batch'] in records:
+                records[row['batch']]['developed_lts'] = True if row[
+                    'path_lts'] else False
+                records[row['batch']]['developed_azure'] = True if row[
+                    'path_az'] else False
+                records[row['batch']]['processed'] = not \
+                    row['UnProcessed_lts'] if row[
+                                                  'UnProcessed_lts'] is not None \
+                    else not row['UnProcessed_az']
+                records[row['batch']]['developed_jpgs'] = row[
+                    'images_lts'] if \
+                    row['images_lts'] else row['images_az']
+            else:
+                log.info(
+                    f"{row['batch']} - developed found, upload missing")
+                name_splits = row['batch'].split("_")
+                records[row['batch']] = {
+                    "batch": row['batch'],
+                    "developed_lts": True if row['path_lts'] else False,
+                    "developed_azure": True if row['path_az'] else False,
+                    "preprocessed": None,
+                    "processed": not row['UnProcessed_lts'] if
+                    row['UnProcessed_lts'] is not None
+                    else not row['UnProcessed_az'],
+                    "state": name_splits[0],
+                    "date": name_splits[1],
+                    "developed_jpgs": row['images_lts'] if row['images_lts']
+                    else row['images_az'],
+                    "upload_raws": None,
+                    "upload_lts": None,
+                    "upload_azure": None,
+                    "cutouts_lts": None,
+                    "cutouts_azure": None,
+                    "bbot_version": None
+                }
 
         for _, row in cutouts_df.iterrows():
-            if row['batch'] not in lts_developed_duplicated_batches \
-                    and row['batch'] not in lts_cutouts_duplicated_batches:
+            # avoiding cutouts duplicate batches for now - since there is
+            # only one
+            if row['batch'] not in lts_cutouts_duplicated_batches:
                 if row['batch'] in records:
                     records[row['batch']]['cutouts_lts'] = True if row[
                         'path_lts'] else False
@@ -492,13 +430,10 @@ class Report:
                         "bbot_version": None
                     }
         records = [v for k, v in records.items()]
-        # pd.DataFrame(records).to_csv(
-        #     os.path.join(self.report_folder, f"actionable_items.csv"))
         pd.DataFrame(records).to_csv(
             os.path.join(self.report_folder, f"batch_details.csv"))
-
         self._generate_summary_stats(uploads_df, developed_df, cutouts_df)
-        # TODO: deal with duplicate records
+        # TODO: deal with cutouts duplicate records
         return
 
     def generate_actionable_message(self):
@@ -516,7 +451,7 @@ class Report:
             }
         ]
         actionable_df = pd.read_csv(
-            os.path.join(self.report_folder, 'actionable_items.csv'),
+            os.path.join(self.report_folder, 'batch_details.csv'),
             index_col=0)
         uploads_az_not_lts = actionable_df[(actionable_df['upload_azure']) & (
                 actionable_df['upload_lts'] == False)].shape[0]
@@ -574,7 +509,9 @@ class Report:
             }
         ])
 
-        files = [os.path.join(self.report_folder, 'actionable_items.csv')]
+        files = [os.path.join(self.report_folder, 'batch_details.csv'),
+                 os.path.join(self.report_folder,
+                              'semif_developed_duplicates_lts.csv')]
 
         return message_blocks, files
 
@@ -592,10 +529,12 @@ class Report:
                 'type': 'divider'
             }
         ]
-        md_table = "| Category   | Total Size (TB) |\n" \
-                   "|------------|------------------|\n"
+        md_table = "```" \
+                   "| Category   | Total Size (TB) |\n" \
+                   "|------------|-----------------|\n"
         for category, size in self.summary_stats['totalSizeTB'].items():
             md_table += f"| {category.capitalize()} | {round(size, 2)} |\n"
+        md_table += '\n```'
         message_blocks.append({
             'type': 'section',
             'text': {
