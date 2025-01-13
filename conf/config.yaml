@@ -1,33 +1,31 @@
 # Hydra defaults and settings. Ignore these (don't change)
 defaults:
-  - _self_  
+  - _self_
   - paths: default
 
 report:
   slack_channel: "#semif-datareports"
+
 pipeline:
   - list_blob_contents
-  # - local_batch_table_generator
-  # - report
-#folders and their corresponding ile types that will be matched in the data directory
-matching_folders: {'images':'jpg','instance_masks':'png','semantic_masks':'png','metadata':'json'}
+  - local_batch_table_generator
+  - report
 
 list_blob_contents:
-  unprocessed_folders: 
+  unprocessed_folders:
     - images
     - autosfm
     - metadata
     - meta_masks
-  processed_folders: 
+  processed_folders:
     - autosfm
     - metadata
     - meta_masks
   file_extensions:
-    images: ['.jpg']
-    raw_images: ['.arw', '.raw']
-    metadata: ['.json']
-    meta_masks/semantic_masks: ['.png']
-    
+    images: [ '.jpg' ]
+    raw_images: [ '.arw', '.raw' ]
+    metadata: [ '.json' ]
+    meta_masks/semantic_masks: [ '.png' ]
   batch_prefixes:
     - MD
     - TX
@@ -36,11 +34,11 @@ list_blob_contents:
 local_batch_generator:
   bbot_versions:
     MD:
-      v2.0: ["2022-03-04", "2024-05-16"]
-      v3.0: ["2024-06-24", "2025-03-14"]
+      v2.0: [ "2022-03-04", "2024-05-16" ]
+      v3.0: [ "2024-06-24", "2025-03-14" ]
     NC:
-      v2.0: ["2022-03-04", "2024-03-14"]
-      v3.0: ["2024-07-08", "2024-10-31"]
-      v3.1: ["2024-12-02", "2025-03-14"]
+      v2.0: [ "2022-03-04", "2024-03-14" ]
+      v3.0: [ "2024-07-08", "2024-10-31" ]
+      v3.1: [ "2024-12-02", "2025-03-14" ]
     TX:
-      v2.0: ["2022-03-04", "2024-10-11"]
+      v2.0: [ "2022-03-04", "2024-10-11" ]
