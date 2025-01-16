@@ -186,7 +186,7 @@ class Report:
             return group.loc[(group[['images', 'metadata', 'meta_masks']].sum(
                 axis=1)).idxmax()]
         elif len(group) > 2:
-            log.info(f"{group['batch'].tolist()[0]} -developed - has more "
+            log.warning(f"{group['batch'].tolist()[0]} -developed - has more "
                      f"than 2 duplicates")
             return None
 
