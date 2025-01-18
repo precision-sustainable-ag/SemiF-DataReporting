@@ -22,3 +22,5 @@ dependencies:
       - tqdm==4.66.4
       - shyaml==0.6.2
       - hydra_colorlog==1.2.0
+      - matplotlib==3.10.0
+      - slack_sdk==3.34.0
