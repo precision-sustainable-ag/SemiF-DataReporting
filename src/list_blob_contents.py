@@ -143,7 +143,7 @@ class ExporterBlobMetrics:
             ("processed", processed_batches, processed_size)
         ]
         for batch_type, batches, total_size in batches_info:
-            log_string = f"Found {len(batches)} {batch_type} batches with total size of {total_size/1024} GiB"
+            log_string = f"Found {len(batches)} {batch_type} batches with total size of {total_size/1024} TiB"
             log.info(log_string)
             with open(os.path.join(self.output_dir, f'semif-HighLevelStats.txt'), 'a') as f:
                 f.write(log_string +'\n')
