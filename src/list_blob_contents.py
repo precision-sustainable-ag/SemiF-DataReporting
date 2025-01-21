@@ -123,13 +123,11 @@ class ExporterBlobMetrics:
         # 3. exists in both - (unpre+pre) intersection (processed) - pro is currently all in developed
         unpreprocessed_batches = list(set(unpreprocessed_batches) - set(processed_batches))
         preprocessed_batches = list(set(preprocessed_batches) - set(unpreprocessed_batches))
-        exists_in_both = set(processed_batches).intersection(set(unpreprocessed_batches).union(set(preprocessed_batches)))
         
         unprocessed_batches, processed_batches = [], []
         for batch_prefix, batches in developed_blob_data.items():
             for batch_name, batch_info in batches.items():
-                if batch_name in exists_in_both:
-                    processed_batches.append(batch_name) if batch_info['has_processed_folders'] else unprocessed_batches.append(batch_name)
+                processed_batches.append(batch_name) if batch_info['has_processed_folders'] else unprocessed_batches.append(batch_name)
         
         unpreprocessed_size = az_get_batches_size(uploads_blob_data, unpreprocessed_batches)
         preprocessed_size = az_get_batches_size(uploads_blob_data, preprocessed_batches)
