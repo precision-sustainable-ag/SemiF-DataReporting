@@ -8,7 +8,7 @@ import os
 from typing import List, Dict, Optional, Tuple, Type
 from datetime import datetime
 from tqdm import tqdm
-from utils.utils import TqdmLoggingHandler
+from utils.utils import TqdmLoggingHandler, _get_bbot_version
 from concurrent.futures import ProcessPoolExecutor, ThreadPoolExecutor
 # Set up logging to integrate with tqdm
 log = logging.getLogger(__name__)
@@ -276,12 +276,11 @@ class UploadsCounter(BaseCounter):
         return jpg_count, png_count, arw_count, raw_count
 
 class SemifieldUploadsBatchChecker(BaseBatchChecker):
-    def __init__(self, batch_path: Path, developed_batches_paths: List[Path], bbot_versions):
+    def __init__(self, batch_path: Path, developed_batches_paths: List[Path]):
         super().__init__(batch_path)
         # no subfolders
         self.counter = UploadsCounter(batch_path)
         self.developed_batches_paths = developed_batches_paths
-        self.bbot_versions = bbot_versions
 
     # there are batches that are present in multiple lts locations
     # currently, there are duplicate records
@@ -292,7 +291,7 @@ class SemifieldUploadsBatchChecker(BaseBatchChecker):
     # don't use png counts
     # config has been updated with new dates for bbot versions
     # 
-    def is_preprocessed(self) -> bool:
+    def is_preprocessed(self):
         """Check if this batch exists in any of the semifield-developed paths"""
         batch_name = self.batch_path.name
         for developed_path in self.developed_batches_paths:
@@ -300,29 +299,10 @@ class SemifieldUploadsBatchChecker(BaseBatchChecker):
                 return True, developed_path.parent.name
         return False, None
 
-    def _get_bbot_version(self, location, date_str):
-        date_format = "%Y-%m-%d"
-        check_date = datetime.strptime(date_str, date_format)
-        for version, date_range in self.bbot_versions[location].items():
-            start_date = datetime.strptime(date_range[0], date_format)
-            end_date = datetime.strptime(date_range[1], date_format)
-            if start_date <= check_date <= end_date:
-                return version
-        return None
-
     def check_batch(self) -> Optional[Dict[str, any]]:
         if self.validator.is_valid_batch_name(self.batch_path.name):
             log.debug(f"Valid batch found: {self.batch_path.name}")
-            
-            # images_count, metadata_count, _ = self.counter.get_subfolder_counts()
-
-            
             is_preprocessed, developed_lts_loc = self.is_preprocessed()
-            # working with the assumption that if there are subfolders - the images are only there
-            # if subfolders are not present, total size is just outside
-            # if len(self.counter.subfolders) > 0:
-            #     total_size = self.counter.get_subdir_size()
-            # else:
             total_size = self.counter.get_folder_size(self.batch_path)
             jpg_count, png_count, arw_count, raw_count = self.counter.get_counts()
             batch_name_splits = self.batch_path.name.split("_")
@@ -335,7 +315,6 @@ class SemifieldUploadsBatchChecker(BaseBatchChecker):
                 # "png_count": png_count,
                 "totalSizeGiB": total_size,
                 "IsPreprocessed": is_preprocessed,
-                "version": self._get_bbot_version(batch_name_splits[0], batch_name_splits[1])
             }
             return batch_info
         else:
@@ -365,7 +344,6 @@ class SemifieldCutoutBatchChecker(BaseBatchChecker):
             jpg_count, png_count, json_count, mask_count = self.counter.get_cutout_counts()
             has_matching = self.check_has_matching(jpg_count, png_count, json_count, mask_count)
             format_type = self.determine_format_type(self.batch_path, "category")
-            # missing_files = self.counter.get_missing_files()
             # Use ProcessPoolExecutor to calculate sizes concurrently
             with ProcessPoolExecutor() as executor:
                 future = executor.submit(self.counter.get_file_sizes)
@@ -458,7 +436,7 @@ def main(cfg: DictConfig) -> None:
 
 
     def create_uploads_checker(batch_path: Path) -> SemifieldUploadsBatchChecker:
-        return SemifieldUploadsBatchChecker(batch_path, paths_with_subdirectories, cfg.local_batch_generator.bbot_versions)
+        return SemifieldUploadsBatchChecker(batch_path, paths_with_subdirectories)
     
     report = BatchReport(paths_uploads, create_uploads_checker)
     batch_details = report.generate_report()

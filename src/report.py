@@ -10,7 +10,7 @@ from datetime import datetime
 from slack_sdk import WebClient
 from slack_sdk.errors import SlackApiError
 
-from utils.utils import read_yaml
+from utils.utils import read_yaml, _get_bbot_version
 
 log = logging.getLogger(__name__)
 
@@ -23,6 +23,7 @@ class Report:
         self.parent_report_folder = cfg.paths.report
         self.report_folder = None
         self.summary_stats = {}
+        self.bbot_versions = cfg.bbot_versions
 
     def copy_relevant_files(self):
         # get relevant blobcontainers files
@@ -69,53 +70,8 @@ class Report:
                      os.path.join(self.report_folder,
                                   f'semif_developed_batch_details_lts.csv'))
 
-    # def compose_slack_message(self, actionable_summary):
-    #     # with open(os.path.join(self.report_folder, 'semif-HighLevelStats.txt'),
-    #     #           'r') as f:
-    #     #     self.message_blocks.append({
-    #     #         'type': 'section',
-    #     #         'text': {
-    #     #             'type': 'mrkdwn',
-    #     #             'text': ''.join(f.readlines())
-    #     #         }
-    #     #     })
-    #     self.message_blocks.append({
-    #         'type': 'section',
-    #         'text': {
-    #             'type': 'mrkdwn',
-    #             'text': actionable_summary
-    #         }
-    #     })
-    #     self.files.append(os.path.join(self.report_folder,
-    #                                    'actionable_items.csv'))
-    #     # for file in os.listdir(self.report_folder):
-    #     #     if file.lower().endswith('.png'):
-    #     #         self.files.append(os.path.join(self.report_folder, file))
-
     def send_slack_notification(self, message_blocks, files):
         client = WebClient(token=self.__auth_config_data['slack_api_token'])
-        # message = {
-        #     "channel": "#semif-datareports",
-        #     "blocks": [
-        #         {
-        #             "type": "section",
-        #             "text": {
-        #                 "type": "mrkdwn",
-        #                 "text": "*Data Report*\n {insert date}"
-        #             }
-        #         },
-        #         {
-        #             "type": "divider"
-        #         },
-        #         {
-        #             "type": "section",
-        #             "text": {
-        #                 "type": "mrkdwn",
-        #                 "text": "• Unprocessed 1\n• Processed"
-        #             }
-        #         },
-        #     ]
-        # }
         message = {
             'channel': self.task_cfg.slack_channel,
             'blocks': message_blocks
@@ -360,7 +316,9 @@ class Report:
                 "upload_azure": True if row['path_az'] else False,
                 "cutouts_lts": None,
                 "cutouts_azure": None,
-                "bbot_version": row['version']
+                "bbot_version": _get_bbot_version(self.bbot_versions,
+                                                  name_splits[0],
+                                                  name_splits[1]),
             }
         upload_lts = None
 
@@ -398,7 +356,8 @@ class Report:
                     "upload_azure": None,
                     "cutouts_lts": None,
                     "cutouts_azure": None,
-                    "bbot_version": None
+                    "bbot_version": _get_bbot_version(self.bbot_versions,
+                                                      name_splits[0], name_splits[1])
                 }
 
         for _, row in cutouts_df.iterrows():
@@ -427,7 +386,8 @@ class Report:
                         "upload_azure": None,
                         "cutouts_lts": True if row['path_lts'] else False,
                         "cutouts_azure": True if row['path_az'] else False,
-                        "bbot_version": None
+                        "bbot_version": _get_bbot_version(self.bbot_versions,
+                                                      name_splits[0], name_splits[1])
                     }
         records = [v for k, v in records.items()]
         pd.DataFrame(records).to_csv(

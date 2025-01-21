@@ -129,3 +129,13 @@ def az_get_batches_size(data, batch_names):
             if batch_name in batch_names:
                     total_size += batch_info['total_size']
     return total_size
+
+def _get_bbot_version(bbot_versions, location, date_str):
+    date_format = "%Y-%m-%d"
+    check_date = datetime.strptime(date_str, date_format)
+    for version, date_range in bbot_versions[location].items():
+        start_date = datetime.strptime(date_range[0], date_format)
+        end_date = datetime.strptime(date_range[1], date_format)
+        if start_date <= check_date <= end_date:
+            return version
+    return None
