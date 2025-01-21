@@ -298,7 +298,6 @@ class Report:
                     upload_lts = False
             else:
                 upload_lts = False
-
             records[row['batch']] = {
                 "batch": row['batch'],
                 "developed_lts": False,
@@ -389,6 +388,16 @@ class Report:
                         "bbot_version": _get_bbot_version(self.bbot_versions,
                                                       name_splits[0], name_splits[1])
                     }
+        # handle odd cases where lts has uploads and az has developed or vice
+        # versa
+        for batch_name, batch_info in records.items():
+            if (batch_info['upload_lts'] or batch_info['upload_azure']) and (
+                    batch_info['developed_lts'] or
+                    batch_info['developed_azure']):
+                batch_info['preprocessed'] = True
+            else:
+                batch_info['preprocessed'] = False
+
         records = [v for k, v in records.items()]
         pd.DataFrame(records).to_csv(
             os.path.join(self.report_folder, f"batch_details.csv"))
