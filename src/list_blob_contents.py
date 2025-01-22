@@ -140,6 +140,10 @@ class ExporterBlobMetrics:
             ("unprocessed", unprocessed_batches, unprocessed_size),
             ("processed", processed_batches, processed_size)
         ]
+        # create a new file for every run and then append to it
+        with open(os.path.join(self.output_dir, f'semif-HighLevelStats.txt'),
+                  'w') as f:
+            f.write("")
         for batch_type, batches, total_size in batches_info:
             log_string = f"Found {len(batches)} {batch_type} batches with total size of {total_size/1024} TiB"
             log.info(log_string)
@@ -206,9 +210,9 @@ class GenerateProcessedCSV():
                 'images': details['images']['count'],
                 'metadata': details['metadata']['count'],
                 'meta_masks': details['meta_masks']['count'],
-                'ImagesFolderSizeGiB': details['images']['size'] / 1024,
-                'MetadataFolderSizeGiB': details['metadata']['size']  / 1024,
-                'MetaMasksFolderSizeGiB': details['meta_masks']['size'] / 1024,
+                'ImagesFolderSizeGiB': details['images']['size'],
+                'MetadataFolderSizeGiB': details['metadata']['size'],
+                'MetaMasksFolderSizeGiB': details['meta_masks']['size'],
                 'UnProcessed': False if batch_json['has_processed_folders'] else True
             })
         return data
@@ -240,11 +244,6 @@ class GenerateProcessedCSV():
             elif os.path.splitext(filename)[1].lower() == '.png':
                 data['png_count'] += 1
                 data['png_size_gib'] += filesize
-
-        data['jpg_size_gib'] /= 1024
-        data['json_size_gib'] /= 1024
-        data['png_size_gib'] /= 1024
-        data['mask_size_gib'] /= 1024
 
         return data
     def _read_semif_cutouts(self):
@@ -320,5 +319,4 @@ def main(cfg: DictConfig) -> None:
     log.info("Generated high-level stats and converted data to jsonl format")
 
     csv_generator = GenerateProcessedCSV(cfg)
-    # csv_generator.create_semif_csv()
     csv_generator.create_semif_csv()
