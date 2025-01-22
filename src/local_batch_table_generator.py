@@ -343,7 +343,7 @@ class SemifieldCutoutBatchChecker(BaseBatchChecker):
             log.debug(f"Valid batch found: {self.batch_path.name}")
             jpg_count, png_count, json_count, mask_count = self.counter.get_cutout_counts()
             has_matching = self.check_has_matching(jpg_count, png_count, json_count, mask_count)
-            format_type = self.determine_format_type(self.batch_path, "category")
+            format_type = self.determine_format_type(self.batch_path, "validated")
             # Use ProcessPoolExecutor to calculate sizes concurrently
             with ProcessPoolExecutor() as executor:
                 future = executor.submit(self.counter.get_file_sizes)
