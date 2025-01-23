@@ -395,6 +395,9 @@ class Report:
                     batch_info['developed_lts'] or
                     batch_info['developed_azure']):
                 batch_info['preprocessed'] = True
+            elif batch_info['developed_jpgs'] and batch_info[
+                'developed_jpgs'] > 0:
+                batch_info['preprocessed'] = True
             else:
                 batch_info['preprocessed'] = False
 
