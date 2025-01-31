@@ -1,14 +1,15 @@
 import logging
 import shutil
 import os
+import sqlite3
 import pandas as pd
 import numpy as np
 import matplotlib.pyplot as plt
-from pathlib import Path
 from omegaconf import DictConfig
 from datetime import datetime
 from slack_sdk import WebClient
 from slack_sdk.errors import SlackApiError
+from prettytable import PrettyTable
 
 from utils.utils import read_yaml, _get_bbot_version
 
@@ -143,7 +144,7 @@ class Report:
                 axis=1)).idxmax()]
         elif len(group) > 2:
             log.warning(f"{group['batch'].tolist()[0]} -developed - has more "
-                     f"than 2 duplicates")
+                        f"than 2 duplicates")
             return None
 
     def _cleanup_developed_duplicates(self, lts_developed_df, az_developed_df):
@@ -356,7 +357,8 @@ class Report:
                     "cutouts_lts": None,
                     "cutouts_azure": None,
                     "bbot_version": _get_bbot_version(self.bbot_versions,
-                                                      name_splits[0], name_splits[1])
+                                                      name_splits[0],
+                                                      name_splits[1])
                 }
 
         for _, row in cutouts_df.iterrows():
@@ -386,7 +388,8 @@ class Report:
                         "cutouts_lts": True if row['path_lts'] else False,
                         "cutouts_azure": True if row['path_az'] else False,
                         "bbot_version": _get_bbot_version(self.bbot_versions,
-                                                      name_splits[0], name_splits[1])
+                                                          name_splits[0],
+                                                          name_splits[1])
                     }
         # handle odd cases where lts has uploads and az has developed or vice
         # versa
@@ -517,14 +520,147 @@ class Report:
         return message_blocks, self.summary_stats['files']
 
 
+class DBQuery:
+    def __init__(self, cfg):
+        self.db_cfg = cfg.report.db
+        self.db_name = self.db_cfg['path']
+        self.connection = sqlite3.connect(self.db_name)
+        self.cursor = self.connection.cursor()
+
+        self.dev_img_table = self.db_cfg['dev_imgs']
+        self.cutouts = self.db_cfg['cutouts']
+
+    def fullsized_data(self):
+        total_count_table = "Error"
+        total_by_common_name = "Error"
+        total_by_category = "Error"
+        total_by_year = "Error"
+        total_by_location = "Error"
+        try:
+            self.cursor.execute(f"""
+            select count(*) as count from {self.dev_img_table};
+            """)
+            rows = self.cursor.fetchall()
+            column_names = [description[0] for description in
+                            self.cursor.description]
+            total_count_table = PrettyTable()
+            total_count_table.field_names = column_names
+            for row in rows:
+                total_count_table.add_row(row)
+            total_count_table.title = "Total Processed Images"
+            log.info(f"{total_count_table}")
+
+            self.cursor.execute(f"""
+            select common_name, count(distinct image_id) as images from (
+                select json_extract(category.value, '$.common_name') AS common_name, image_id
+                from {self.dev_img_table}, json_each(categories) AS category
+                )
+                group by common_name
+                order by images desc;
+            """)
+            rows = self.cursor.fetchall()
+            column_names = [description[0] for description in
+                            self.cursor.description]
+            total_by_common_name = PrettyTable()
+            total_by_common_name.field_names = column_names
+            for row in rows:
+                total_by_common_name.add_row(row)
+            total_by_common_name.title = ("Total Processed Images by Category "
+                                          "Name")
+            log.info(f"{total_by_common_name}")
+
+            self.cursor.execute(f"""
+            select category, count(distinct image_id) as images from (
+                select json_extract(category_each.value, '$.category') as category, image_id
+                from {self.dev_img_table},json_each(categories) as category_each)
+                group by category
+                order by images desc;
+            """)
+            rows = self.cursor.fetchall()
+            column_names = [description[0] for description in
+                            self.cursor.description]
+            modified_rows = {
+                'weed crops': 0,
+                'cash crops': 0,
+                'cover crops': 0,
+            }
+            for row in rows:
+                if 'weed' in row[0].lower():
+                    modified_rows['weed crops'] += row[1]
+                elif 'cash' in row[0].lower():
+                    modified_rows['cash crops'] += row[1]
+                elif 'cover' in row[0].lower():
+                    modified_rows['cover crops'] += row[1]
+                else:
+                    if row[0] not in modified_rows:
+                        modified_rows[row[0]] = row[1]
+                    else:
+                        modified_rows[row[0]] += row[1]
+            total_by_category = PrettyTable()
+            total_by_category.field_names = column_names
+            for k, v in modified_rows.items():
+                total_by_category.add_row([k, v])
+            total_by_category.title = ("Total Processed Images by Category "
+                                       "Name")
+            log.info(f"{total_by_category}")
+
+            self.cursor.execute(f"""
+            select substr(batch_id, 1, instr(batch_id, '_') - 1) as location, 
+            count(*) as count 
+            from {self.dev_img_table}
+            group by location
+            order by location;
+            """)
+            rows = self.cursor.fetchall()
+            column_names = [description[0] for description in
+                            self.cursor.description]
+            total_by_location = PrettyTable()
+            total_by_location.field_names = column_names
+            for row in rows:
+                total_by_location.add_row(row)
+            total_by_location.title = "Total Processed Images by Location"
+            log.info(f"{total_by_location}")
+
+            self.cursor.execute(f"""
+            select substr(datetime, 1, 4) as year, count(*) as count
+            from {self.dev_img_table}
+            group by year
+            order by year desc;
+            """)
+            rows = self.cursor.fetchall()
+            column_names = [description[0] for description in
+                            self.cursor.description]
+            total_by_year = PrettyTable()
+            total_by_year.field_names = column_names
+            for row in rows:
+                total_by_year.add_row(row)
+            total_by_year.title = "Total Processed Images by Year"
+            log.info(f"{total_by_year}")
+
+        except sqlite3.Error as e:
+            log.error(e)
+        message_blocks = [
+            {
+                "type": "section",
+                "text": f"```{table}```"
+            }
+            for table in [total_count_table, total_by_common_name,
+                          total_by_category, total_by_location,total_by_year]
+        ]
+        return message_blocks
+
+
 def main(cfg: DictConfig) -> None:
     """Main function to execute report generation and sending it to slack."""
     report = Report(cfg)
-
-    report.copy_relevant_files()
-    report.generate_actionable_table()
-    message, files = report.generate_summary_message()
-    report.send_slack_notification(message, files)
-
-    message, files = report.generate_actionable_message()
-    report.send_slack_notification(message, files)
+    #
+    # report.copy_relevant_files()
+    # report.generate_actionable_table()
+    # message, files = report.generate_summary_message()
+    # report.send_slack_notification(message, files)
+    #
+    # message, files = report.generate_actionable_message()
+    # report.send_slack_notification(message, files)
+    dbquery = DBQuery(cfg)
+    message = dbquery.fullsized_data()
+    report.send_slack_notification(message,None)

@@ -5,10 +5,14 @@ defaults:
 
 report:
   slack_channel: "#semif-datareports"
+  db:
+    path: "/Users/jbshah/_p/test/test.db"
+    cutouts: "semif_cutouts"
+    dev_imgs: "semif_developed_images"
 
 pipeline:
-  - list_blob_contents
-  - local_batch_table_generator
+#  - list_blob_contents
+#  - local_batch_table_generator
   - report
 
 list_blob_contents:
