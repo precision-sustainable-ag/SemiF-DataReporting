@@ -6,13 +6,14 @@ defaults:
 report:
   slack_channel: "#semif-datareports"
   db:
-    path: "/Users/jbshah/_p/test/test.db"
+    #    path: "/Users/jbshah/_p/test/test.db"
+    path: "/mnt/research-projects/s/screberg/longterm_images2/semifield-database/agir.db"
     cutouts: "semif_cutouts"
     dev_imgs: "semif_developed_images"
 
 pipeline:
-#  - list_blob_contents
-#  - local_batch_table_generator
+  - list_blob_contents
+  - local_batch_table_generator
   - report
 
 list_blob_contents:
@@ -45,3 +46,4 @@ bbot_versions:
     v3.1: [ "2024-12-02", "NOW_DATE_PLACEHOLDER" ]
   TX:
     v2.0: [ "2022-03-04", "2024-10-11" ]
+

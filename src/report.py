@@ -522,6 +522,8 @@ class Report:
 
 class DBQuery:
     def __init__(self, cfg):
+        self.report_folder = os.path.join(cfg.paths.report,
+                                          datetime.now().strftime("%Y-%m-%d"))
         self.db_cfg = cfg.report.db
         self.db_name = self.db_cfg['path']
         self.connection = sqlite3.connect(self.db_name)
@@ -581,6 +583,12 @@ class DBQuery:
         rows = [[k, v] for k, v in modified_rows.items()]
         return rows
 
+    def _save_csv(self, rows, cols, subfolder, stat_type):
+        os.makedirs(os.path.join(self.report_folder, subfolder), exist_ok=True)
+        file_name = os.path.join(self.report_folder, subfolder,
+                                 f"{stat_type}.csv")
+        pd.DataFrame(rows, columns=cols).to_csv(file_name, index=False)
+
     def fullsized_data(self):
 
         rows, cols = self._execute_query(f"""
@@ -588,6 +596,8 @@ class DBQuery:
         """)
         total_count_table = self._create_table(rows, cols,
                                                "Total Processed Images")
+
+        self._save_csv(rows, cols, 'developed_images', 'total_count')
 
         rows, cols = self._execute_query(f"""
             select common_name, count(distinct image_id) as images from (
@@ -599,6 +609,7 @@ class DBQuery:
             """)
         total_by_common_name = self._create_table(rows, cols,
                                                   "Total Processed Images by Common Name")
+        self._save_csv(rows, cols, 'developed_images', 'total_by_common_name')
 
         rows, cols = self._execute_query(f"""
             select category, count(distinct image_id) as images from (
@@ -610,6 +621,7 @@ class DBQuery:
         rows = self._collate_categories(rows)
         total_by_category = self._create_table(rows, cols,
                                                "Total Processed Images by Category")
+        self._save_csv(rows, cols, 'developed_images', 'total_by_category')
 
         rows, cols = self._execute_query(f"""
             select substr(batch_id, 1, instr(batch_id, '_') - 1) as location, 
@@ -620,6 +632,7 @@ class DBQuery:
             """)
         total_by_location = self._create_table(rows, cols,
                                                "Total Processed Images by Location")
+        self._save_csv(rows, cols, 'developed_images', 'total_by_location')
 
         rows, cols = self._execute_query(f"""
             select substr(datetime, 1, 4) as year, count(*) as count
@@ -629,6 +642,7 @@ class DBQuery:
             """)
         total_by_year = self._create_table(rows, cols,
                                            "Total Processed Images by Year")
+        self._save_csv(rows, cols, 'developed_images', 'total_by_year')
 
         message_blocks = [
             {
@@ -648,6 +662,7 @@ class DBQuery:
         select count(*) from {self.cutout_table};
         """)
         total_count_table = self._create_table(rows, cols, "Total Cutouts")
+        self._save_csv(rows, cols, 'cutouts', 'total_count')
 
         rows, cols = self._execute_query(f"""
         select json_extract(category, '$.common_name') as common_name, count(*) as
@@ -657,6 +672,7 @@ class DBQuery:
         """)
         total_by_common_name = self._create_table(rows, cols, "Total Cutouts "
                                                               "by Common Name")
+        self._save_csv(rows, cols, 'cutouts', 'total_by_common_name')
 
         rows, cols = self._execute_query(f"""
         select json_extract(category, '$.category') as categories, count(*) as count
@@ -667,6 +683,7 @@ class DBQuery:
         rows = self._collate_categories(rows)
         total_by_category = self._create_table(rows, cols, "Total Cutouts by "
                                                            "Category")
+        self._save_csv(rows, cols, 'cutouts', 'total_by_category')
 
         rows, cols = self._execute_query(f"""
         select substr(batch_id, 1, instr(batch_id, '_') - 1) as location, count(*) as
@@ -676,6 +693,7 @@ class DBQuery:
         """)
         total_by_location = self._create_table(rows, cols,
                                                "Total Cutouts by Location")
+        self._save_csv(rows, cols, 'cutouts', 'total_by_location')
 
         rows, cols = self._execute_query(f"""
         select substr(datetime, 1, 4) as year, count(*) as count
@@ -684,6 +702,32 @@ class DBQuery:
         order by year desc;
         """)
         total_by_year = self._create_table(rows, cols, "Total Cutouts by Year")
+        self._save_csv(rows, cols, 'cutouts', 'total_by_year')
+
+        rows, cols = self._execute_query(f"""
+        select
+            case
+                when json_extract(cutout_props, '$.bbox_area_cm2') between 0 and 0.1
+                    then 'very small'
+                when json_extract(cutout_props, '$.bbox_area_cm2') between 0.1 and 1
+                    then 'small'
+                when json_extract(cutout_props, '$.bbox_area_cm2') between 1 and 10
+                    then 'medium'
+                when json_extract(cutout_props, '$.bbox_area_cm2') between 10 and 100
+                    then 'medium large'
+                when json_extract(cutout_props, '$.bbox_area_cm2') between 100 and 1000
+                    then 'large'
+                when json_extract(cutout_props, '$.bbox_area_cm2') between 1000 and 1000000
+                    then 'very large'
+                else json_extract(cutout_props, '$.bbox_area_cm2')
+            end as bbox_area,
+            json_extract(semif_cutouts.category, '$.common_name') as common_name,
+            json_extract(cutout_props, '$.is_primary') as is_primary,
+            count(*) as count
+        from {self.cutout_table}
+        group by common_name, bbox_area, is_primary;
+        """)
+        self._save_csv(rows, cols, 'cutouts', 'area_by_common_name')
 
         message_blocks = [
             {
@@ -705,6 +749,7 @@ class DBQuery:
                 """)
         total_count_table = self._create_table(rows, cols,
                                                "Total Primary Cutouts")
+        self._save_csv(rows, cols, 'primary_cutouts', 'total_count')
 
         rows, cols = self._execute_query(f"""
                 select json_extract(category, '$.common_name') as common_name, count(*) as
@@ -715,6 +760,7 @@ class DBQuery:
                 """)
         total_by_common_name = self._create_table(rows, cols,
                                                   "Total Primary Cutouts by Common Name")
+        self._save_csv(rows, cols, 'primary_cutouts', 'total_by_common_name')
 
         rows, cols = self._execute_query(f"""
                 select json_extract(category, '$.category') as category, count(*) as count
@@ -726,6 +772,7 @@ class DBQuery:
         rows = self._collate_categories(rows)
         total_by_category = self._create_table(rows, cols,
                                                "Total Primary Cutouts by Category")
+        self._save_csv(rows, cols, 'primary_cutouts', 'total_by_category')
 
         rows, cols = self._execute_query(f"""
                 select substr(batch_id, 1, instr(batch_id, '_') - 1) as location, count(*) as
@@ -736,6 +783,7 @@ class DBQuery:
                 """)
         total_by_location = self._create_table(rows, cols,
                                                "Total Primary Cutouts by Location")
+        self._save_csv(rows, cols, 'primary_cutouts', 'total_by_location')
 
         rows, cols = self._execute_query(f"""
                 select substr(datetime, 1, 4) as year, count(*) as count
@@ -746,6 +794,7 @@ class DBQuery:
                 """)
         total_by_year = self._create_table(rows, cols,
                                            "Total Primary Cutouts by Year")
+        self._save_csv(rows, cols, 'primary_cutouts', 'total_by_year')
 
         message_blocks = [
             {
@@ -764,21 +813,21 @@ class DBQuery:
 def main(cfg: DictConfig) -> None:
     """Main function to execute report generation and sending it to slack."""
     report = Report(cfg)
-    #
-    # report.copy_relevant_files()
-    # report.generate_actionable_table()
-    # message, files = report.generate_summary_message()
-    # report.send_slack_notification(message, files)
-    #
-    # message, files = report.generate_actionable_message()
-    # report.send_slack_notification(message, files)
+
+    report.copy_relevant_files()
+    report.generate_actionable_table()
+    message, files = report.generate_summary_message()
+    report.send_slack_notification(message, files)
+
+    message, files = report.generate_actionable_message()
+    report.send_slack_notification(message, files)
+
     dbquery = DBQuery(cfg)
     message = dbquery.fullsized_data()
-    log.info(message)
-    # report.send_slack_notification(message, None)
+    report.send_slack_notification(message, None)
 
     message = dbquery.cutout_data()
-    log.info(message)
+    report.send_slack_notification(message, None)
 
     message = dbquery.primary_cutout_data()
-    log.info(message)
+    report.send_slack_notification(message, None)
