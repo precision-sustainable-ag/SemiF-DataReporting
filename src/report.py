@@ -528,29 +528,68 @@ class DBQuery:
         self.cursor = self.connection.cursor()
 
         self.dev_img_table = self.db_cfg['dev_imgs']
-        self.cutouts = self.db_cfg['cutouts']
+        self.cutout_table = self.db_cfg['cutouts']
 
-    def fullsized_data(self):
-        total_count_table = "Error"
-        total_by_common_name = "Error"
-        total_by_category = "Error"
-        total_by_year = "Error"
-        total_by_location = "Error"
+    def __del__(self):
+        if self.connection:
+            self.connection.commit()
+            self.connection.close()
+            self.connection = None
+
+    def _execute_query(self, query):
         try:
-            self.cursor.execute(f"""
-            select count(*) as count from {self.dev_img_table};
-            """)
+            self.cursor.execute(query)
             rows = self.cursor.fetchall()
             column_names = [description[0] for description in
                             self.cursor.description]
-            total_count_table = PrettyTable()
-            total_count_table.field_names = column_names
-            for row in rows:
-                total_count_table.add_row(row)
-            total_count_table.title = "Total Processed Images"
-            log.info(f"{total_count_table}")
+            return rows, column_names
+        except sqlite3.Error as e:
+            log.error(f"Query failed: {e}")
+            return None, None
 
-            self.cursor.execute(f"""
+    @staticmethod
+    def _create_table(rows, column_names, title):
+        if rows and column_names:
+            table = PrettyTable()
+            table.field_names = column_names
+            table.add_rows(rows)
+            table.title = title
+            return table
+        else:
+            return f"Error: {title}"
+
+    @staticmethod
+    def _collate_categories(rows):
+        # collate categories into weeds, cash crops and cover crops
+        modified_rows = {
+            'weed crops': 0,
+            'cash crops': 0,
+            'cover crops': 0,
+        }
+        for row in rows:
+            if 'weed' in row[0].lower():
+                modified_rows['weed crops'] += row[1]
+            elif 'cash' in row[0].lower():
+                modified_rows['cash crops'] += row[1]
+            elif 'cover' in row[0].lower():
+                modified_rows['cover crops'] += row[1]
+            else:
+                if row[0] not in modified_rows:
+                    modified_rows[row[0]] = row[1]
+                else:
+                    modified_rows[row[0]] += row[1]
+        rows = [[k, v] for k, v in modified_rows.items()]
+        return rows
+
+    def fullsized_data(self):
+
+        rows, cols = self._execute_query(f"""
+        select count(*) as count from {self.dev_img_table};
+        """)
+        total_count_table = self._create_table(rows, cols,
+                                               "Total Processed Images")
+
+        rows, cols = self._execute_query(f"""
             select common_name, count(distinct image_id) as images from (
                 select json_extract(category.value, '$.common_name') AS common_name, image_id
                 from {self.dev_img_table}, json_each(categories) AS category
@@ -558,94 +597,166 @@ class DBQuery:
                 group by common_name
                 order by images desc;
             """)
-            rows = self.cursor.fetchall()
-            column_names = [description[0] for description in
-                            self.cursor.description]
-            total_by_common_name = PrettyTable()
-            total_by_common_name.field_names = column_names
-            for row in rows:
-                total_by_common_name.add_row(row)
-            total_by_common_name.title = ("Total Processed Images by Category "
-                                          "Name")
-            log.info(f"{total_by_common_name}")
+        total_by_common_name = self._create_table(rows, cols,
+                                                  "Total Processed Images by Common Name")
 
-            self.cursor.execute(f"""
+        rows, cols = self._execute_query(f"""
             select category, count(distinct image_id) as images from (
                 select json_extract(category_each.value, '$.category') as category, image_id
                 from {self.dev_img_table},json_each(categories) as category_each)
                 group by category
                 order by images desc;
             """)
-            rows = self.cursor.fetchall()
-            column_names = [description[0] for description in
-                            self.cursor.description]
-            modified_rows = {
-                'weed crops': 0,
-                'cash crops': 0,
-                'cover crops': 0,
-            }
-            for row in rows:
-                if 'weed' in row[0].lower():
-                    modified_rows['weed crops'] += row[1]
-                elif 'cash' in row[0].lower():
-                    modified_rows['cash crops'] += row[1]
-                elif 'cover' in row[0].lower():
-                    modified_rows['cover crops'] += row[1]
-                else:
-                    if row[0] not in modified_rows:
-                        modified_rows[row[0]] = row[1]
-                    else:
-                        modified_rows[row[0]] += row[1]
-            total_by_category = PrettyTable()
-            total_by_category.field_names = column_names
-            for k, v in modified_rows.items():
-                total_by_category.add_row([k, v])
-            total_by_category.title = ("Total Processed Images by Category "
-                                       "Name")
-            log.info(f"{total_by_category}")
+        rows = self._collate_categories(rows)
+        total_by_category = self._create_table(rows, cols,
+                                               "Total Processed Images by Category")
 
-            self.cursor.execute(f"""
+        rows, cols = self._execute_query(f"""
             select substr(batch_id, 1, instr(batch_id, '_') - 1) as location, 
             count(*) as count 
             from {self.dev_img_table}
             group by location
             order by location;
             """)
-            rows = self.cursor.fetchall()
-            column_names = [description[0] for description in
-                            self.cursor.description]
-            total_by_location = PrettyTable()
-            total_by_location.field_names = column_names
-            for row in rows:
-                total_by_location.add_row(row)
-            total_by_location.title = "Total Processed Images by Location"
-            log.info(f"{total_by_location}")
+        total_by_location = self._create_table(rows, cols,
+                                               "Total Processed Images by Location")
 
-            self.cursor.execute(f"""
+        rows, cols = self._execute_query(f"""
             select substr(datetime, 1, 4) as year, count(*) as count
             from {self.dev_img_table}
             group by year
             order by year desc;
             """)
-            rows = self.cursor.fetchall()
-            column_names = [description[0] for description in
-                            self.cursor.description]
-            total_by_year = PrettyTable()
-            total_by_year.field_names = column_names
-            for row in rows:
-                total_by_year.add_row(row)
-            total_by_year.title = "Total Processed Images by Year"
-            log.info(f"{total_by_year}")
+        total_by_year = self._create_table(rows, cols,
+                                           "Total Processed Images by Year")
 
-        except sqlite3.Error as e:
-            log.error(e)
         message_blocks = [
             {
                 "type": "section",
-                "text": f"```{table}```"
+                "text": {
+                    'type': 'mrkdwn',
+                    'text': f"```{table}```"
+                }
             }
             for table in [total_count_table, total_by_common_name,
-                          total_by_category, total_by_location,total_by_year]
+                          total_by_category, total_by_location, total_by_year]
+        ]
+        return message_blocks
+
+    def cutout_data(self):
+        rows, cols = self._execute_query(f"""
+        select count(*) from {self.cutout_table};
+        """)
+        total_count_table = self._create_table(rows, cols, "Total Cutouts")
+
+        rows, cols = self._execute_query(f"""
+        select json_extract(category, '$.common_name') as common_name, count(*) as
+        count from {self.cutout_table}
+        group by common_name
+        order by count desc;
+        """)
+        total_by_common_name = self._create_table(rows, cols, "Total Cutouts "
+                                                              "by Common Name")
+
+        rows, cols = self._execute_query(f"""
+        select json_extract(category, '$.category') as categories, count(*) as count
+        from {self.cutout_table}
+        group by categories
+        order by count desc;
+        """)
+        rows = self._collate_categories(rows)
+        total_by_category = self._create_table(rows, cols, "Total Cutouts by "
+                                                           "Category")
+
+        rows, cols = self._execute_query(f"""
+        select substr(batch_id, 1, instr(batch_id, '_') - 1) as location, count(*) as
+        count from {self.cutout_table}
+        group by location
+        order by location desc;
+        """)
+        total_by_location = self._create_table(rows, cols,
+                                               "Total Cutouts by Location")
+
+        rows, cols = self._execute_query(f"""
+        select substr(datetime, 1, 4) as year, count(*) as count
+        from {self.cutout_table}
+        group by year
+        order by year desc;
+        """)
+        total_by_year = self._create_table(rows, cols, "Total Cutouts by Year")
+
+        message_blocks = [
+            {
+                "type": "section",
+                "text": {
+                    'type': 'mrkdwn',
+                    'text': f"```{table}```"
+                }
+            }
+            for table in [total_count_table, total_by_common_name,
+                          total_by_category, total_by_location, total_by_year]
+        ]
+        return message_blocks
+
+    def primary_cutout_data(self):
+        rows, cols = self._execute_query(f"""
+                select count(*) from {self.cutout_table}
+                where json_extract(cutout_props, '$.is_primary') = true;
+                """)
+        total_count_table = self._create_table(rows, cols,
+                                               "Total Primary Cutouts")
+
+        rows, cols = self._execute_query(f"""
+                select json_extract(category, '$.common_name') as common_name, count(*) as
+                count from {self.cutout_table}
+                where json_extract(cutout_props, '$.is_primary') = true
+                group by common_name
+                order by count desc;
+                """)
+        total_by_common_name = self._create_table(rows, cols,
+                                                  "Total Primary Cutouts by Common Name")
+
+        rows, cols = self._execute_query(f"""
+                select json_extract(category, '$.category') as category, count(*) as count
+                from {self.cutout_table}
+                where json_extract(cutout_props, '$.is_primary') = true
+                group by category
+                order by count desc;
+                """)
+        rows = self._collate_categories(rows)
+        total_by_category = self._create_table(rows, cols,
+                                               "Total Primary Cutouts by Category")
+
+        rows, cols = self._execute_query(f"""
+                select substr(batch_id, 1, instr(batch_id, '_') - 1) as location, count(*) as
+                count from {self.cutout_table}
+                where json_extract(cutout_props, '$.is_primary') = true
+                group by location
+                order by location desc;
+                """)
+        total_by_location = self._create_table(rows, cols,
+                                               "Total Primary Cutouts by Location")
+
+        rows, cols = self._execute_query(f"""
+                select substr(datetime, 1, 4) as year, count(*) as count
+                from {self.cutout_table}
+                where json_extract(cutout_props, '$.is_primary') = true
+                group by year
+                order by year desc;
+                """)
+        total_by_year = self._create_table(rows, cols,
+                                           "Total Primary Cutouts by Year")
+
+        message_blocks = [
+            {
+                "type": "section",
+                "text": {
+                    'type': 'mrkdwn',
+                    'text': f"```{table}```"
+                }
+            }
+            for table in [total_count_table, total_by_common_name,
+                          total_by_category, total_by_location, total_by_year]
         ]
         return message_blocks
 
@@ -663,4 +774,11 @@ def main(cfg: DictConfig) -> None:
     # report.send_slack_notification(message, files)
     dbquery = DBQuery(cfg)
     message = dbquery.fullsized_data()
-    report.send_slack_notification(message,None)
+    log.info(message)
+    # report.send_slack_notification(message, None)
+
+    message = dbquery.cutout_data()
+    log.info(message)
+
+    message = dbquery.primary_cutout_data()
+    log.info(message)
