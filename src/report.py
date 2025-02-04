@@ -79,9 +79,6 @@ class Report:
         }
         try:
             message_response = client.chat_postMessage(**message)
-
-            log.info(
-                f"sent slack message to channel - {message_response['channel']}, thread - {message_response['ts']}")
             if files:
                 for file in files:
                     file_response = client.files_upload_v2(
@@ -91,7 +88,7 @@ class Report:
                         thread_ts=message_response['ts'],
                     )
         except SlackApiError as e:
-            print(f"Error: {e}")
+            log.info(f"Error: {e}")
 
     def _cleanup_lts_uploads_csv(self):
         # for duplicate batches (present in multiple lts locations - longterm_storage, GROW_DATA) 
@@ -817,18 +814,24 @@ def main(cfg: DictConfig) -> None:
 
     report.copy_relevant_files()
     report.generate_actionable_table()
+    log.info(f"Actionable table generated")
     message, files = report.generate_summary_message()
     report.send_slack_notification(message, files)
+    log.info(f"Summary info message sent")
 
     message, files = report.generate_actionable_message()
     report.send_slack_notification(message, files)
+    log.info(f"Actionable info message sent")
 
     dbquery = DBQuery(cfg)
     message = dbquery.fullsized_data()
     report.send_slack_notification(message, None)
+    log.info(f"Processed images db message sent")
 
     message, files = dbquery.cutout_data()
     report.send_slack_notification(message, files)
+    log.info(f"Cutouts db message sent")
 
     message = dbquery.primary_cutout_data()
     report.send_slack_notification(message, None)
+    log.info(f"Primary cutouts db message sent")
