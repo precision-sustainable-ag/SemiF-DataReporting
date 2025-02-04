@@ -6,7 +6,7 @@ defaults:
 report:
   slack_channel: "#semif-datareports"
   db:
-    #    path: "/Users/jbshah/_p/test/test.db"
+#    path: "/Users/jbshah/_p/test/test.db"
     path: "/mnt/research-projects/s/screberg/longterm_images2/semifield-database/agir.db"
     cutouts: "semif_cutouts"
     dev_imgs: "semif_developed_images"

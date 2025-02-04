@@ -82,14 +82,14 @@ class Report:
 
             log.info(
                 f"sent slack message to channel - {message_response['channel']}, thread - {message_response['ts']}")
-
-            for file in files:
-                file_response = client.files_upload_v2(
-                    channel=message_response['channel'],
-                    file=file,
-                    # initial_comment="Here's the attached file",
-                    thread_ts=message_response['ts'],
-                )
+            if files:
+                for file in files:
+                    file_response = client.files_upload_v2(
+                        channel=message_response['channel'],
+                        file=file,
+                        # initial_comment="Here's the attached file",
+                        thread_ts=message_response['ts'],
+                    )
         except SlackApiError as e:
             print(f"Error: {e}")
 
@@ -740,7 +740,8 @@ class DBQuery:
             for table in [total_count_table, total_by_common_name,
                           total_by_category, total_by_location, total_by_year]
         ]
-        return message_blocks
+        return message_blocks, [os.path.join(self.report_folder, 'cutouts',
+                                             'area_by_common_name.csv')]
 
     def primary_cutout_data(self):
         rows, cols = self._execute_query(f"""
@@ -826,8 +827,8 @@ def main(cfg: DictConfig) -> None:
     message = dbquery.fullsized_data()
     report.send_slack_notification(message, None)
 
-    message = dbquery.cutout_data()
-    report.send_slack_notification(message, None)
+    message, files = dbquery.cutout_data()
+    report.send_slack_notification(message, files)
 
     message = dbquery.primary_cutout_data()
     report.send_slack_notification(message, None)
