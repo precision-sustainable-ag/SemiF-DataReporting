@@ -698,7 +698,7 @@ class DBQuery:
     def _append_general_dist_txt(self, tables, stat_type):
         with open(self.txt_db_report, 'a') as f:
             f.write(f"Stats for {stat_type}\n\n")
-            f.writelines([x+'\n' for x in tables])
+            f.writelines([x + '\n' for x in tables])
             f.write('\n\n--------------------------------------\n\n')
         return
 
@@ -776,9 +776,10 @@ class DBQuery:
                                            "Total Processed Images by Year")
         self._save_csv(rows, cols, 'developed_images', 'total_by_year')
 
-        tables = [x.get_string() for x in [total_count_table, total_by_common_name,
-                          total_by_category, total_by_location,
-                           total_by_year]]
+        tables = [x.get_string() for x in
+                  [total_count_table, total_by_common_name,
+                   total_by_category, total_by_location,
+                   total_by_year]]
         self._append_general_dist_txt(tables, 'developed images')
 
         return
@@ -857,13 +858,14 @@ class DBQuery:
         from {self.cutout_table}
         group by common_name, bbox_area, is_primary;
         """)
-        area_by_common_name = self._create_table(rows, cols,"Area by Common Name")
+        area_by_common_name = self._create_table(rows, cols,
+                                                 "Area by Common Name")
         self._save_csv(rows, cols, 'cutouts', 'area_by_common_name')
 
         tables = [x.get_string() for x in
                   [total_count_table, total_by_common_name,
                    total_by_category, total_by_location,
-                   total_by_year, area_by_common_name]]
+                   total_by_year]]
         self._append_general_dist_txt(tables, 'cutouts')
 
         return
@@ -969,4 +971,8 @@ def main(cfg: DictConfig) -> None:
             }
         }
     ]
-    report.send_slack_notification(message_blocks, [dbquery.txt_db_report])
+    report.send_slack_notification(message_blocks, [dbquery.txt_db_report,
+                                                    os.path.join(
+                                                        dbquery.report_folder,
+                                                        'cutouts',
+                                                        'area_by_common_name.csv')])
